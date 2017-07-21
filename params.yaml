@@ -25,3 +25,7 @@ molwt: 28.97
 
 # clustering parameters
 grid_beta:  5.0
+
+# time-stepping criteria
+cfl_vel: 0.5
+cfl_visc: 0.1
