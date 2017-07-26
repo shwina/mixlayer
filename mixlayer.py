@@ -34,32 +34,89 @@ def calculate_timestep(x, y, rho, rho_u, rho_v, tmp,
     dt = np.min(np.minimum(np.minimum(test_1, test_2), test_3))
     return dt
 
-def rhs_euler_terms():
-    pass
+def rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, pressure, dx, dn, dndy):
+    
+    rho_rhs[...] = -dfdy(rho_v, dn)*dndy
+    rho_rhs[[0,-1], :] = 0
+    rho_rhs[...] += -dfdx(rho_u, dx)
+
+    rho_u_rhs[...] = -dfdy(rho_u*rho_v/rho, dn)*dndy
+    rho_u_rhs[[0,-1], :] = 0
+    rho_u_rhs += -dfdx(rho_u*rho_u/rho + pressure, dx) 
+    
+    rho_v_rhs[...] = -dfdy(rho_v*rho_v/rho + pressure, dn)*dndy
+    rho_v_rhs[[0,-1], :] = 0 
+    rho_v_rhs += -dfdx(rho_v*rho_u/rho , dx)
+
+    egy_rhs[...] = -dfdx((egy + pressure)*(rho_u/rho), dx) - dfdy((egy + pressure)*(rho_v/rho), dn)*dndy
+
 
 def dfdx(f, dx):
-    dfdx = (1./dx)*((4./5)*(np.roll(f,+1,1)-np.roll(f,-1,1)) + 
-            (-1./5)*(np.roll(f,+2,1)-np.roll(f,-2,1)) +
-            (4./105)*(np.roll(f,+3,1)-np.roll(f,-3,1)) +
-            (-1./280)*(np.roll(f,+4,1)-np.roll(f,-4,1)))
-    return dfdx
+    dfdx = (1./dx)*((4./5)*(np.roll(f,-1,1)-np.roll(f,+1,1)) + 
+            (-1./5)*(np.roll(f,-2,1)-np.roll(f,+2,1)) +
+            (4./105)*(np.roll(f,-3,1)-np.roll(f,+3,1)) +
+            (-1./280)*(np.roll(f,-4,1)-np.roll(f,+4,1)))
+ 
+    """
+    dfdx[:, 0] = (1./dx)*((4./5)*(f[:, 1] - f[:, -2]) + 
+            (-1./5)*(f[:, 2] - f[:, -3]) +
+            (4./105)*(f[:, 3] - f[:, -4]) +
+            (-1./280)*(f[:, 4] - f[:, -5]))
 
+    dfdx[:, 1] = (1./dx)*((4./5)*(f[:, 2] - f[:, 0]) + 
+            (-1./5)*(f[:, 3] - f[:, -2]) +
+            (4./105)*(f[:, 4] - f[:, -3]) +
+            (-1./280)*(f[:, 5] - f[:, -4]))
+
+    dfdx[:, 2] = (1./dx)*((4./5)*(f[:, 3] - f[:, 1]) + 
+            (-1./5)*(f[:, 4] - f[:, 0]) +
+            (4./105)*(f[:, 5] - f[:, -2]) +
+            (-1./280)*(f[:, 6] - f[:, -3]))
+
+    dfdx[:, 3] = (1./dx)*((4./5)*(f[:, 4] - f[:, 2]) + 
+            (-1./5)*(f[:, 5] - f[:, 1]) +
+            (4./105)*(f[:, 6] - f[:, 0]) +
+            (-1./280)*(f[:, 7] - f[:, -2]))
+
+    dfdx[:, -1] = (1./dx)*((4./5)*(f[:, 1] - f[:, -2]) + 
+            (-1./5)*(f[:, 2] - f[:, -3]) +
+            (4./105)*(f[:, 3] - f[:, -4]) +
+            (-1./280)*(f[:, 4] - f[:, -5]))
+
+    dfdx[:, -2] = (1./dx)*((4./5)*(f[:, -1] - f[:, -3]) + 
+            (-1./5)*(f[:, 1] - f[:, -4]) +
+            (4./105)*(f[:, 2] - f[:, -5]) +
+            (-1./280)*(f[:, 3] - f[:, -6]))
+
+    dfdx[:, -3] = (1./dx)*((4./5)*(f[:, -2] - f[:, -4]) + 
+            (-1./5)*(f[:, -1] - f[:, -5]) +
+            (4./105)*(f[:, 1] - f[:, -6]) +
+            (-1./280)*(f[:, 2] - f[:, -7]))
+
+    dfdx[:, -4] = (1./dx)*((4./5)*(f[:, -3] - f[:, -5]) + 
+            (-1./5)*(f[:, -2] - f[:, -6]) +
+            (4./105)*(f[:, -1] - f[:, -7]) +
+            (-1./280)*(f[:, 1] - f[:, -8]))
+
+    """
+    return dfdx
+ 
 def dfdy(f, dy):
     N = f.shape[0]
-    dfdy =  (1./dy)*((4./5)*(np.roll(f,+1,0)-np.roll(f,-1,0)) + 
-            (-1./5)*(np.roll(f,+2,0)-np.roll(f,-2,0)) +
-            (4./105)*(np.roll(f,+3,0)-np.roll(f,-3,0)) +
-            (-1./280)*(np.roll(f,+4,0)-np.roll(f,-4,0)))
-    
+    dfdy =  (1./dy)*((4./5)*(np.roll(f,-1,0)-np.roll(f,+1,0)) + 
+            (-1./5)*(np.roll(f,-2,0)-np.roll(f,+2,0)) +
+            (4./105)*(np.roll(f,-3,0)-np.roll(f,+3,0)) +
+            (-1./280)*(np.roll(f,-4,0)-np.roll(f,+4,0)))
     dfdy[0, :] = (-11*f[0,:]+18*f[1,:]-9*f[2,:]+2*f[3,:])/(6.*dy)
-    dfdy[1, :] = (-2*f[0,:]-3*f[1,:]+6*f[2,:]-1*f[3:])/(6.*dy)
-    dfdy[2, :] = (2*f[3,:]-1*f[1,:])/(3*dy) - (1*f[4,:]-f[0,:])/(12*dy)
-    dfdy[3, :] = (3*f[4,:]-3*f[2,:])/(4*dy) - (3*f[5,:]-f[1,:])/(20*dy) + (1*f[6,:]-f[0,:])/(60*dy) 
+    dfdy[0, :] = (-11*f[0,:]+18*f[1,:]-9*f[2,:]+2*f[3,:])/(6.*dy)
+    dfdy[1, :] = (-2*f[0,:]-3*f[1,:]+6*f[2,:]-1*f[3,:])/(6.*dy)
+    dfdy[2, :] = 2*(f[3,:]-f[1,:])/(3*dy) - 1*(f[4,:]-f[0,:])/(12*dy)
+    dfdy[3, :] = 3*(f[4,:]-f[2,:])/(4*dy) - 3*(f[5,:]-f[1,:])/(20*dy) + 1*(f[6,:]-f[0,:])/(60*dy) 
 
     dfdy[-1, :] = -((-11*f[-1,:]+18*f[-2,:]-9*f[-3,:]+2*f[-4,:])/(6.*dy))
-    dfdy[-2, :] = -((-2*f[-1,:]-3*f[-2,:]+6*f[-3,:]-1*f[-4:])/(6.*dy))
-    dfdy[-3, :] = -((2*f[-4,:]-1*f[-2,:])/(3*dy) - (1*f[-5,:]-f[-1,:])/(12*dy))
-    dfdy[-4, :] = -((3*f[-5,:]-3*f[-3,:])/(4*dy) - (3*f[-6,:]-f[-2,:])/(20*dy) + (1*f[-7,:]-f[-1,:])/(60*dy))
+    dfdy[-2, :] = -((-2*f[-1,:]-3*f[-2,:]+6*f[-3,:]-1*f[-4,:])/(6.*dy))
+    dfdy[-3, :] = -(2*(f[-4,:]-f[-2,:])/(3*dy) - 1*(f[-5,:]-f[-1,:])/(12*dy))
+    dfdy[-4, :] = -(3*(f[-5,:]-f[-3,:])/(4*dy) - 3*(f[-6,:]-f[-2,:])/(20*dy) + 1*(f[-7,:]-f[-1,:])/(60*dy))
     return dfdy
     
 
@@ -69,7 +126,7 @@ with open('params.yaml') as f:
 
 N = params['N']
 Lx = params['Lx']
-Ly = params['Ly']
+Ly = Lx*((N-1)/N)*2.
 
 P_inf = params['P_inf']
 T_inf1 = params['T_inf1']
@@ -101,7 +158,6 @@ rho_ref2 = P_inf/(Rspecific*T_inf2)
 U_inf1 = 2*Ma*C_sound1/(1+np.sqrt(rho_ref1/rho_ref2)*(C_sound1/C_sound2))
 U_inf2 = -np.sqrt(rho_ref1/rho_ref2)*U_inf1
 
-
 print(Rspecific)
 print(Cp)
 print(Cv)
@@ -112,12 +168,18 @@ print(U_inf1)
 print(U_inf2)
 
 # construct grid
-x, y = np.meshgrid(np.arange(0, Lx+Lx/(N-1), Lx/(N-1)), np.arange(0, Ly+Ly/(N-1), Ly/(N-1)))
-y = y - y/2
+dx = Lx/N
+dn = 1./(N-1)
+x = np.arange(N)*dx*np.ones([N, N])
+y = np.arange(0, 1+dn, dn)*np.ones([N, N])
+y = y.T
 grid_A = 1./(2*grid_beta)*np.log((1 + (np.exp(grid_beta) - 1)*((Ly/2)/Ly))/(
     1 + (np.exp(-grid_beta) - 1)*((Ly/2)/Ly)))
 y = (Ly/2)*(1 + np.sinh(grid_beta*(y - grid_A))/np.sinh(
     grid_beta*grid_A))
+dndy = np.sinh(grid_beta*grid_A)/(grid_beta*(Ly/2)*(1+((y/(Ly/2))-1)**2*np.sinh(grid_beta*grid_A)**2)**0.5)*Ly
+y = y-Ly/2
+dn = Ly*dn
 
 # geometric parameters
 disturbance_wavelength = Lx/nperiod
@@ -145,23 +207,25 @@ rho_u_rhs = np.zeros([N, N], dtype=np.float64)
 rho_v_rhs = np.zeros([N, N], dtype=np.float64)
 egy_rhs = np.zeros([N, N], dtype=np.float64)
 
-weight = (np.tanh(np.sqrt(np.pi*y/vorticity_thickness)) + 1.)/2.0
-tmp[:, :] = T_inf2 + weight*(T_inf1-T_inf2)
+weight = np.tanh(np.sqrt(np.pi)*y/vorticity_thickness)
+tmp[:, :] = T_inf2 + (weight+1)/2.*(T_inf1-T_inf2)
 rho[:, :] = P_inf/(Rspecific*tmp[:, :])
 #rho_u[:, :] = rho*(U_inf2+(weight+1)/2.*(U_inf1-U_inf2))
 #rho_v[:, :] = 0.0
 
-
 # read values of rho_u and rho_v since we don't know how
 # to generate them yet
-rho_u = rho*np.loadtxt('init/u.txt')*(U_inf1-U_inf2)
-rho_v = rho*np.loadtxt('init/v.txt')*(U_inf1-U_inf2)
+rho_u = np.loadtxt('init/u.txt').reshape([N, N])
+rho_v = np.loadtxt('init/v.txt').reshape([N, N])
 egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*Cv*tmp
-
 
 eos(rho, rho_u, rho_v, egy, tmp, pressure, Cv, Rspecific)
 
 dt = calculate_timestep(x, y, rho, rho_u, rho_v, tmp, gamma_ref, mu_ref, kappa_ref,
     Cp, Cv, Rspecific, cfl_vel, cfl_visc)
-print(dt)
 
+rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, pressure, dx, dn, dndy)
+print(egy_rhs)
+plt.imshow(egy_rhs)
+plt.colorbar()
+plt.show()

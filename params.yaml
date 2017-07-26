@@ -2,7 +2,6 @@
 # grid parameters
 N: 144
 Lx: 1
-Ly: 2
 
 # simulation control
 Ma: 0.35
