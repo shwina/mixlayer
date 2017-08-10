@@ -331,8 +331,9 @@ if __name__ == "__main__":
         apply_inner_filter(egy, filter_amplitude/10)
         print(np.min(tmp), np.max(tmp))
         if i%200 == 0:
-            plt.imshow(tmp,vmin=280, vmax=320 )
-            plt.colorbar()
+            plt.imshow(tmp,vmin=270, vmax=325)
+            plt.xticks([])
+            plt.yticks([])
             plt.savefig("{:05d}.png".format(i))
             plt.close()
 
