@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import yaml
 from numba import jit, float64
+import pprofile
 
 def eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific):
     tmp[:, :] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho)/(rho*Cv)
@@ -207,21 +208,24 @@ def dfdx(f, dx):
 def dfdy(f, dy):
     ny, nx = f.shape
     out = np.empty_like(f, dtype=np.float64)
-    for i in range(4, ny-4):
-        for j in range(nx):
-            out[i,j] =  (1./dy)*((4./5)*(f[i-1,j] - f[i+1,j]) +
-                    (-1./5)*(f[i-2,j] - f[i+2,j]) +
-                    (4./105)*(f[i-3,j] - f[i+3,j]) +
-                    (-1./280)*(f[i-4,j] - f[i+4,j]))
-            out[0,j] = (-11*f[0,j]+18*f[1,j]-9*f[2,j]+2*f[3,j])/(6.*dy)
-            out[1,j] = (-2*f[0,j]-3*f[1,j]+6*f[2,j]-1*f[3,j])/(6.*dy)
-            out[2,j] = 2*(f[3,j]-f[1,j])/(3*dy) - 1*(f[4,j]-f[0,j])/(12*dy)
-            out[3,j] = 3*(f[4,j]-f[2,j])/(4*dy) - 3*(f[5,j]-f[1,j])/(20*dy) + 1*(f[6,j]-f[0,j])/(60*dy) 
+    f = f.T.copy()
+    for i in range(nx):
+        for j in range(4, ny-4):
+            out[i,0] = (-11*f[i,0]+18*f[i,1]-9*f[i,2]+2*f[i,3])/(6.*dy)
+            out[i,1] = (-2*f[0,j]-3*f[i,1]+6*f[i,2]-1*f[i,3])/(6.*dy)
+            out[i,2] = 2*(f[i,3]-f[i,1])/(3*dy) - 1*(f[i,4]-f[i,0])/(12*dy)
+            out[i,3] = 3*(f[i,4]-f[i,2])/(4*dy) - 3*(f[i,5]-f[i,1])/(20*dy) + 1*(f[i,6]-f[i,0])/(60*dy) 
 
-            out[-1,j] = -((-11*f[-1,j]+18*f[-2,j]-9*f[-3,j]+2*f[-4,j])/(6.*dy))
-            out[-2,j] = -((-2*f[-1,j]-3*f[-2,j]+6*f[-3,j]-1*f[-4,j])/(6.*dy))
-            out[-3,j] = -(2*(f[-4,j]-f[-2,j])/(3*dy) - 1*(f[-5,j]-f[-1,j])/(12*dy))
-            out[-4,j] = -(3*(f[-5,j]-f[-3,j])/(4*dy) - 3*(f[-6,j]-f[-2,j])/(20*dy) + 1*(f[-7,j]-f[-1,j])/(60*dy))
+            out[i,j] =  (1./dy)*((4./5)*(f[i,j+1] - f[i,j-i]) +
+                    (-1./5)*(f[i,j+2] - f[i,j-2]) +
+                    (4./105)*(f[i,j+3] - f[i,j-3]) +
+                    (-1./280)*(f[i,j+4] - f[i,j-4]))
+
+            out[i,-1] = -((-11*f[i,-1]+18*f[i,-2]-9*f[i,-3]+2*f[-4,j])/(6.*dy))
+            out[i,-2] = -((-2*f[i,-1]-3*f[i,-2]+6*f[i,-3]-1*f[i,-4])/(6.*dy))
+            out[i,-3] = -(2*(f[i,-4]-f[i,-2])/(3*dy) - 1*(f[i,-5]-f[i,-1])/(12*dy))
+            out[i,-4] = -(3*(f[i,-5]-f[i,-3])/(4*dy) - 3*(f[i,-6]-f[i,-2])/(20*dy) + 1*(f[i,-7]-f[i,-1])/(60*dy))
+    out = out.T.copy()
     return out
     
 if __name__ == "__main__":
@@ -323,36 +327,38 @@ if __name__ == "__main__":
     egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*Cv*tmp
 
 
-    for i in range(50000):
-        eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
+    prof = pprofile.StatisticalProfile()
+    with prof():
+        for i in range(100):
+            eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
 
-        dt = calculate_timestep(x, y, rho, rho_u, rho_v, tmp, gamma_ref, mu_ref, kappa_ref,
-            Cp, Cv, Rspecific, cfl_vel, cfl_visc)
+            dt = calculate_timestep(x, y, rho, rho_u, rho_v, tmp, gamma_ref, mu_ref, kappa_ref,
+                Cp, Cv, Rspecific, cfl_vel, cfl_visc)
 
-        dt *= 0.05
+            dt *= 0.05
 
-        rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, prs, dx, dn, dndy)
+            rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, prs, dx, dn, dndy)
 
-        rhs_viscous_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, mu_ref, kappa_ref)
+            rhs_viscous_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, mu_ref, kappa_ref)
 
-        C_sound = np.sqrt(Cp/Cv*Rspecific*tmp)
+            C_sound = np.sqrt(Cp/Cv*Rspecific*tmp)
 
-        non_reflecting_boundary_conditions(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
-                rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, C_sound, filter_amplitude, Ma, Ly, P_inf)
+            non_reflecting_boundary_conditions(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
+                    rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, C_sound, filter_amplitude, Ma, Ly, P_inf)
 
-        rho[...] = rho[...] + dt*rho_rhs
-        rho_u[...] = rho_u[...] + dt*rho_u_rhs
-        rho_v[...] = rho_v[...] + dt*rho_v_rhs
-        egy[...] = egy[...] + dt*egy_rhs
+            rho[...] = rho[...] + dt*rho_rhs
+            rho_u[...] = rho_u[...] + dt*rho_u_rhs
+            rho_v[...] = rho_v[...] + dt*rho_v_rhs
+            egy[...] = egy[...] + dt*egy_rhs
 
-        apply_inner_filter(rho, filter_amplitude/10)
-        apply_inner_filter(rho_u, filter_amplitude/10)
-        apply_inner_filter(rho_v, filter_amplitude/10)
-        apply_inner_filter(egy, filter_amplitude/10)
-        print(np.min(tmp), np.max(tmp))
-        if i%200 == 0:
-            plt.imshow(tmp,vmin=270, vmax=325)
-            plt.xticks([])
-            plt.yticks([])
-            plt.savefig("{:05d}.png".format(i))
-            plt.close()
+            apply_inner_filter(rho, filter_amplitude/10)
+            apply_inner_filter(rho_u, filter_amplitude/10)
+            apply_inner_filter(rho_v, filter_amplitude/10)
+            apply_inner_filter(egy, filter_amplitude/10)
+            print(np.min(tmp), np.max(tmp))
+            if i%200 == 0:
+                plt.imshow(tmp,vmin=270, vmax=325)
+                plt.xticks([])
+                plt.yticks([])
+                plt.savefig("{:05d}.png".format(i))
+                plt.close()
