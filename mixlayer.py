@@ -180,7 +180,7 @@ def non_reflecting_boundary_conditions(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rh
     for rhs in rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs:
         apply_boundary_filter(rhs, filter_amplitude)
 
-@jit(nopython=True)
+@jit(nopython=True, parallel=True)
 def dfdx(f, dx):
     out = np.empty_like(f, dtype=np.float64)
     ny, nx = f.shape
@@ -204,7 +204,7 @@ def dfdx(f, dx):
                     (-1./280)*(f[i,j+4] - f[i,j-4]))
     return out
 
-@jit(nopython=True)
+@jit(nopython=True, parallel=True)
 def dfdy(f, dy):
     ny, nx = f.shape
     out = np.empty_like(f, dtype=np.float64)
