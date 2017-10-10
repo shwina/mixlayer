@@ -4,6 +4,66 @@ import yaml
 from numba import jit, float64
 import h5py
 
+def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
+    #f[...] = (((np.roll(f,-1,0) + np.roll(f,1,0))/dx**2) + (
+    #            np.roll(f,-1,1) + np.roll(f,1,1))/dy**2 + rhs)*(dx**2 + dy**2)/2 
+    f_new = np.copy(f)
+    denominator = 2/dx**2 + (2/dn**2)*dndy**2
+
+    ny, nx = f.shape
+    #f_new[...] = (-rhs +
+    #        (np.roll(f,-1,1) + np.roll(f,+1,1))/dx**2 +
+    #        (np.roll(f,-1,0) - np.roll(f,+1,0))/(2*dn)*d2ndy2 +
+    #        (np.roll(f,-1,0) + np.roll(f,+1,0))/(dn**2)*dndy**2)/denominator
+    f[...] = f_new
+
+def add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nperiod, dn, dndy, d2ndy2):
+    N = np.shape(x)[0]
+    dx = 1./N
+    dy = x.copy()
+    dy[:-1, :] = y[1:, :] - y[:-1, :]
+    dy[-1, :] = y[-1, :] - y[-2, :]
+
+    fx = np.zeros_like(x, dtype=np.float64)
+    fy = np.zeros_like(x, dtype=np.float64)
+    fx_max = 0
+
+    vort = np.zeros_like(x, dtype=np.float64)
+    stream = np.zeros_like(x, dtype=np.float64)
+
+    amplitudes = [1, 0.5, 0.35, 0.35]
+    for i in range(4):
+        #vort += np.exp(-np.pi*y**2/vorticity_thickness**2)*np.abs(
+        #    amplitudes[i]*np.sin(np.pi*x/(2**i*disturbance_wavelength)))
+        fx += amplitudes[i]*np.abs(np.sin(np.pi*x/(2**i*disturbance_wavelength)))
+        fx_max = np.max([np.max(fx), fx_max])
+    
+    fx = fx/fx_max
+    fy = np.exp(-np.pi*y**2/vorticity_thickness**2)
+    
+    vort[...] = fx*fy
+    circ = np.sum(dy*dx*vort)
+
+    vort[...] = (vort*Famp_2d*disturbance_wavelength*U_ref) / (circ/nperiod)
+
+    for i in range(10000):
+        print(i)
+        jacobi_step(stream, dx, dn, -vort, dndy, d2ndy2)
+
+    u_pert = (np.roll(stream, -1, 0) -  np.roll(stream, +1, 0))*dndy/(2*dn)
+    v_pert = -(np.roll(stream, -1, 1) - np.roll(stream, +1, 1))/(2*dx)
+    
+    vort[...] = ((np.roll(stream, -1, 1) - 2*stream + np.roll(stream, +1, 1))/(dx**2) +
+            ((np.roll(stream, -1, 0) - np.roll(stream, +1, 0))/(2*dn))*d2ndy2 +
+            ((np.roll(stream, -1, 0) - 2*stream + np.roll(stream, +1, 0))/(dn**2))*dndy**2)
+
+    circ = np.sum(dy*dx*vort)
+
+    u_pert = u_pert*Famp_2d*disturbance_wavelength*U_ref / (circ/nperiod)
+    v_pert = v_pert*Famp_2d*disturbance_wavelength*U_ref / (circ/nperiod)
+
+    return u_pert, v_pert
+
 def eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific):
     tmp[:, :] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho)/(rho*Cv)
     prs[:, :] = rho*Rspecific*tmp
@@ -35,7 +95,6 @@ def calculate_timestep(x, y, rho, rho_u, rho_v, tmp,
     dt = np.min(np.minimum(np.minimum(test_1, test_2), test_3))
     return dt
 
-
 def rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
         rho_v_rhs, egy_rhs, prs, dx, dn, dndy):
  
@@ -57,7 +116,6 @@ def rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
     
     egy_rhs_y[[0,-1], :] = 0
     egy_rhs[...] = egy_rhs_x + egy_rhs_y
-
 
 def rhs_viscous_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
         rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, mu, kappa):
@@ -234,6 +292,8 @@ if __name__ == "__main__":
     Lx = params['Lx']
     Ly = Lx*((N-1)/N)*2.
 
+    Famp_2d = params['Famp_2d']
+
     P_inf = params['P_inf']
     T_inf1 = params['T_inf1']
     T_inf2 = params['T_inf2']
@@ -265,6 +325,7 @@ if __name__ == "__main__":
     rho_ref2 = P_inf/(Rspecific*T_inf2)
     U_inf1 = 2*Ma*C_sound1/(1+np.sqrt(rho_ref1/rho_ref2)*(C_sound1/C_sound2))
     U_inf2 = -np.sqrt(rho_ref1/rho_ref2)*U_inf1
+    U_ref = U_inf1-U_inf2
 
     print(Rspecific)
     print(Cp)
@@ -286,6 +347,9 @@ if __name__ == "__main__":
     y = (Ly/2)*(1 + np.sinh(grid_beta*(y - grid_A))/np.sinh(
         grid_beta*grid_A))
     dndy = np.sinh(grid_beta*grid_A)/(grid_beta*(Ly/2)*(1+((y/(Ly/2))-1)**2*np.sinh(grid_beta*grid_A)**2)**0.5)*Ly
+    d2ndy2 = ((y/(Ly/2) - 1)*(np.sinh(grid_beta*grid_A))**3)/(
+            grid_beta*((Ly/2)**2)*((y/(Ly/2)-1)**2 * np.sinh(grid_beta*grid_A)**2 + 1)**1.5)
+
     y = y-Ly/2
     dn = Ly*dn
 
@@ -310,21 +374,40 @@ if __name__ == "__main__":
     rho_u_rhs = np.zeros([N, N], dtype=np.float64)
     rho_v_rhs = np.zeros([N, N], dtype=np.float64)
     egy_rhs = np.zeros([N, N], dtype=np.float64)
+    stream = np.zeros([N, N], dtype=np.float64)
+    vort = np.zeros([N, N], dtype=np.float64)
 
     weight = np.tanh(np.sqrt(np.pi)*y/vorticity_thickness)
     tmp[:, :] = T_inf2 + (weight+1)/2.*(T_inf1-T_inf2)
     rho[:, :] = P_inf/(Rspecific*tmp[:, :])
-    #rho_u[:, :] = rho*(U_inf2+(weight+1)/2.*(U_inf1-U_inf2))
-    #rho_v[:, :] = 0.0
+    rho_u[:, :] = rho*(U_inf2+(weight+1)/2.*(U_inf1-U_inf2))
+    rho_v[:, :] = 0.0
 
     # read values of rho_u and rho_v since we don't know how
     # to generate them yet
-    rho_u = np.loadtxt('init/u.txt').reshape([N, N])
-    rho_v = np.loadtxt('init/v.txt').reshape([N, N])
+
+    u_pert, v_pert = add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nperiod, dn, dndy, d2ndy2)
+
+    rho_u += rho*u_pert
+    rho_v += rho*v_pert
+
+    rho_u_actual = np.loadtxt('init/u.txt').reshape([N, N])
+    rho_v_actual = np.loadtxt('init/v.txt').reshape([N, N])
+
+    plt.imshow((rho_u - rho_u_actual)/rho_u_actual)
+    plt.colorbar()
+    plt.show()
+
+    plt.subplot(121)
+    plt.streamplot(np.arange(N), np.arange(N), rho_u, rho_v, density=5)
+    plt.subplot(122)
+    plt.streamplot(np.arange(N), np.arange(N), rho_u_actual, rho_v_actual, density=5)
+
+    plt.show()
     egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*Cv*tmp
 
-    for i in range(1000):
-        print(i)
+    for i in range(10000):
+        print(i, egy.max())
         eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
 
         dt = calculate_timestep(x, y, rho, rho_u, rho_v, tmp, gamma_ref, mu_ref, kappa_ref,
