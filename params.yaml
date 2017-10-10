@@ -9,6 +9,9 @@ Re: 400
 Pr: 0.697
 nperiod: 8 # number of perturbation wavelengths        
 
+# constants
+Rgas: 8314.0
+
 # initial conditions
 P_inf: 101325.
 T_inf1: 300.
@@ -16,8 +19,8 @@ T_inf2: 300.
 U_inf1:
 U_inf2: 
 
-# constants
-Rgas: 8314.0
+# forcing
+Famp_2d: 0.4
 
 # air (2) and reactant (1) properties
 molwt: 28.97
