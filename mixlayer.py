@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import yaml
-from numba import jit, float64
+from numba import jit, float64, prange
 import h5py
 
 def eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific):
@@ -34,7 +34,6 @@ def calculate_timestep(x, y, rho, rho_u, rho_v, tmp,
 
     dt = np.min(np.minimum(np.minimum(test_1, test_2), test_3))
     return dt
-
 
 def rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
         rho_v_rhs, egy_rhs, prs, dx, dn, dndy):
@@ -84,8 +83,10 @@ def apply_boundary_filter(f, filter_amplitude):
                 - f[-6, :])*filter_amplitude
     
 def apply_inner_filter(f, filter_amplitude):
+    ny, nx = f.shape
+    inner_filter = np.empty_like(f, dtype=np.float64)
     
-    inner_filter = (252*f[...] -210*(np.roll(f,-1,1)+np.roll(f,+1,1)) + 
+    inner_filter[...] = (252*f[...] -210*(np.roll(f,-1,1)+np.roll(f,+1,1)) +
             120*(np.roll(f,-2,1)+np.roll(f,+2,1)) +
             -45*(np.roll(f,-3,1)+np.roll(f,+3,1)) +
             10*(np.roll(f,-4,1)+np.roll(f,+4,1)) +
@@ -180,12 +181,12 @@ def non_reflecting_boundary_conditions(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rh
     for rhs in rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs:
         apply_boundary_filter(rhs, filter_amplitude)
 
-@jit(nopython=True, parallel=True)
+@jit(nopython=True, nogil=True, parallel=True)
 def dfdx(f, dx):
     out = np.empty_like(f, dtype=np.float64)
     ny, nx = f.shape
-    for i in range(ny):
-        for j in range(4):
+    for i in prange(ny):
+        for j in prange(4):
             out[i,j] = (1./dx)*((4./5)*(f[i,j+1] - f[i,j-1]) + 
                     (-1./5)*(f[i,j+2] - f[i,j-2]) +
                     (4./105)*(f[i,j+3] - f[i,j-3]) +
@@ -204,12 +205,12 @@ def dfdx(f, dx):
                     (-1./280)*(f[i,j+4] - f[i,j-4]))
     return out
 
-@jit(nopython=True, parallel=True)
+@jit(nopython=True, nogil=True, parallel=True)
 def dfdy(f, dy):
     ny, nx = f.shape
     out = np.empty_like(f, dtype=np.float64)
-    for i in range(4, ny-4):
-        for j in range(nx):
+    for i in prange(4, ny-4):
+        for j in prange(nx):
             out[i,j] =  (1./dy)*((4./5)*(f[i-1,j] - f[i+1,j]) +
                     (-1./5)*(f[i-2,j] - f[i+2,j]) +
                     (4./105)*(f[i-3,j] - f[i+3,j]) +
@@ -323,7 +324,11 @@ if __name__ == "__main__":
     rho_v = np.loadtxt('init/v.txt').reshape([N, N])
     egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*Cv*tmp
 
-    for i in range(1000):
+
+    import timeit
+
+    t1 = timeit.default_timer()
+    for i in range(50000):
         print(i)
         eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
 
@@ -351,10 +356,15 @@ if __name__ == "__main__":
         apply_inner_filter(rho_v, filter_amplitude/10)
         apply_inner_filter(egy, filter_amplitude/10)
 
+        print(egy.min(), egy.max())
+
         if i%200 == 0:
             f = h5py.File("{:05d}.hdf5".format(i))
             f.create_group("fields")
-            f.create_dataset("rho", data=rho)
-            f.create_dataset("rho_u", data=rho_u)
-            f.create_dataset("rho_v", data=rho_v)
-            f.create_dataset("egy", data=egy)
+            f.create_dataset("fields/rho", data=rho)
+            f.create_dataset("fields/rho_u", data=rho_u)
+            f.create_dataset("fields/rho_v", data=rho_v)
+            f.create_dataset("fields/tmp", data=tmp)
+    t2 = timeit.default_timer()
+
+    print(t2-t1)
