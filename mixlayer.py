@@ -15,7 +15,33 @@ def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
     #        (np.roll(f,-1,1) + np.roll(f,+1,1))/dx**2 +
     #        (np.roll(f,-1,0) - np.roll(f,+1,0))/(2*dn)*d2ndy2 +
     #        (np.roll(f,-1,0) + np.roll(f,+1,0))/(dn**2)*dndy**2)/denominator
-    f[...] = f_new
+
+
+    for i in range(ny):
+        for j in range(nx):
+            if i == 0:
+                bottom = f[0,j]
+            else:
+                bottom = f[i+1,j]
+            if i == ny-1:
+                top = f[-1,j]
+            else:
+                top = f[i-1,j]
+            if j == 0:
+                left = f[i,-1]
+            else:
+                left = f[i,j-1]
+            if j == nx-1:
+                right = f[i,0]
+            else:
+                right = f[i,j+1]
+
+            f_new = (-rhs +
+                    (right + left)/dx**2 +
+                    (top - bottom)*d2ndy2/(2*dn) + 
+                    (top + bottom)*dndy**2/dn**2)/denominator
+
+            f[i,j] = f[i,j] + 1.6*(f_new - f[i,j])
 
 def add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nperiod, dn, dndy, d2ndy2):
     N = np.shape(x)[0]
