@@ -4,18 +4,26 @@ import yaml
 from numba import jit, float64, prange
 import h5py
 
+@jit(nopython=True, nogil=True)
 def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
-    #f[...] = (((np.roll(f,-1,0) + np.roll(f,1,0))/dx**2) + (
-    #            np.roll(f,-1,1) + np.roll(f,1,1))/dy**2 + rhs)*(dx**2 + dy**2)/2 
-    f_new = np.copy(f)
-    denominator = 2/dx**2 + (2/dn**2)*dndy**2
+    f_old = f.copy()
+    denominator = 2./dx**2 + (2./dn**2)*dndy**2
 
     ny, nx = f.shape
-    #f_new[...] = (-rhs +
-    #        (np.roll(f,-1,1) + np.roll(f,+1,1))/dx**2 +
-    #        (np.roll(f,-1,0) - np.roll(f,+1,0))/(2*dn)*d2ndy2 +
-    #        (np.roll(f,-1,0) + np.roll(f,+1,0))/(dn**2)*dndy**2)/denominator
-    f[...] = f_new
+
+    f[0, :] = 0
+    f[-1, :] = 0
+    f[:, 0] = f[:, -2]
+    f[:, -1] = f[:, 1]
+
+    for i in range(1, nx-1):
+        for j in range(1, nx-1):
+            fnew = (-rhs[i-1, j-1] +
+                    (f[i,j+1] + f[i,j-1])/dx**2 +
+                    (f[i+1,j] - f[i-1,j])/(2*dn)*d2ndy2[i-1,j-1] +
+                    (f[i+1,j] + f[i-1,j])/(dn**2)*dndy[i-1,j-1]**2)/denominator[i-1,j-1]
+            f[i,j] = f[i,j] + 1.6*(fnew - f[i,j])
+    print(np.linalg.norm(f-f_old))
 
 def add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nperiod, dn, dndy, d2ndy2):
     N = np.shape(x)[0]
@@ -29,7 +37,7 @@ def add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nper
     fx_max = 0
 
     vort = np.zeros_like(x, dtype=np.float64)
-    stream = np.zeros_like(x, dtype=np.float64)
+    stream = np.zeros([N+2, N+2], dtype=np.float64)
 
     amplitudes = [1, 0.5, 0.35, 0.35]
     for i in range(4):
@@ -46,16 +54,16 @@ def add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nper
 
     vort[...] = (vort*Famp_2d*disturbance_wavelength*U_ref) / (circ/nperiod)
 
-    for i in range(10000):
+    for i in range(50000):
         print(i)
         jacobi_step(stream, dx, dn, -vort, dndy, d2ndy2)
 
-    u_pert = (np.roll(stream, -1, 0) -  np.roll(stream, +1, 0))*dndy/(2*dn)
-    v_pert = -(np.roll(stream, -1, 1) - np.roll(stream, +1, 1))/(2*dx)
-    
-    vort[...] = ((np.roll(stream, -1, 1) - 2*stream + np.roll(stream, +1, 1))/(dx**2) +
-            ((np.roll(stream, -1, 0) - np.roll(stream, +1, 0))/(2*dn))*d2ndy2 +
-            ((np.roll(stream, -1, 0) - 2*stream + np.roll(stream, +1, 0))/(dn**2))*dndy**2)
+    u_pert = (stream[2:,1:-1] - stream[0:-2,1:-1])*dndy/(2*dn)
+    v_pert = -(stream[1:-1,2:] - stream[1:-1,0:-2])/(2*dx)
+       
+    vort[...] = ((stream[1:-1, 2:] - 2*stream[1:-1, 1:-1] + stream[1:-1, 0:-2])/(dx**2) +
+            ((stream[2:, 1:-1] - stream[0:-2, 1:-1])*d2ndy2/(2*dn)) +
+            ((stream[2:, 1:-1] - 2*stream[1:-1, 1:-1] + stream[0:-2, 1:-1])/(dn**2))*dndy**2)
 
     circ = np.sum(dy*dx*vort)
 
@@ -349,11 +357,22 @@ if __name__ == "__main__":
     y = (Ly/2)*(1 + np.sinh(grid_beta*(y - grid_A))/np.sinh(
         grid_beta*grid_A))
     dndy = np.sinh(grid_beta*grid_A)/(grid_beta*(Ly/2)*(1+((y/(Ly/2))-1)**2*np.sinh(grid_beta*grid_A)**2)**0.5)*Ly
-    d2ndy2 = ((y/(Ly/2) - 1)*(np.sinh(grid_beta*grid_A))**3)/(
-            grid_beta*((Ly/2)**2)*((y/(Ly/2)-1)**2 * np.sinh(grid_beta*grid_A)**2 + 1)**1.5)
+    d2ndy2 = -Ly*(np.sinh(grid_beta*grid_A))**3*((y/(Ly/2))-1)/(grid_beta*
+                (Ly/2)**2*(
+                1 + ((y/(Ly/2))-1)**2*(np.sinh(grid_beta*grid_A))**2)**1.5)
 
     y = y-Ly/2
     dn = Ly*dn
+
+    f_test = np.sin(2*np.pi*y[:-1]/Ly)
+    d2f_test = ((np.roll(f_test, -1, 1) - 2*f_test + np.roll(f_test, +1, 1))/(dx**2) +
+            ((np.roll(f_test, -1, 0) - np.roll(f_test, +1, 0))/(2*dn))*d2ndy2[:-1] +
+            ((np.roll(f_test, -1, 0) - 2*f_test + np.roll(f_test, +1, 0))/(dn**2))*dndy[:-1]**2)
+    
+    plt.plot(y[:-1,0], f_test[:,0], 'o')
+    plt.plot(y[:-1,0], d2f_test[:,0], 'o')
+    plt.plot(y[:-1,0], -(4*np.pi**2)/(Ly**2)*np.sin(2*np.pi*y[:-1,0]/Ly))
+    plt.show()
 
     # geometric parameters
     disturbance_wavelength = Lx/nperiod
@@ -396,15 +415,10 @@ if __name__ == "__main__":
     rho_u_actual = np.loadtxt('init/u.txt').reshape([N, N])
     rho_v_actual = np.loadtxt('init/v.txt').reshape([N, N])
 
-    plt.imshow((rho_u - rho_u_actual)/rho_u_actual)
-    plt.colorbar()
-    plt.show()
-
     plt.subplot(121)
-    plt.streamplot(np.arange(N), np.arange(N), rho_u, rho_v, density=5)
+    plt.streamplot(np.arange(N), np.arange(N), rho_u, rho_v, density=4)
     plt.subplot(122)
-    plt.streamplot(np.arange(N), np.arange(N), rho_u_actual, rho_v_actual, density=5)
-
+    plt.streamplot(np.arange(N), np.arange(N), rho_u_actual, rho_v_actual, density=4)
     plt.show()
     egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*Cv*tmp
 
