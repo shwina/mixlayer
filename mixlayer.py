@@ -292,7 +292,22 @@ def dfdy(f, dy):
             out[-3,j] = -(2*(f[-4,j]-f[-2,j])/(3*dy) - 1*(f[-5,j]-f[-1,j])/(12*dy))
             out[-4,j] = -(3*(f[-5,j]-f[-3,j])/(4*dy) - 3*(f[-6,j]-f[-2,j])/(20*dy) + 1*(f[-7,j]-f[-1,j])/(60*dy))
     return out
-    
+
+def rhs(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
+        egy_rhs, prs, dx, dn, dndy, Cp, Cv, Rspecific,
+        filter_amplitude, Ma, Ly, P_inf):
+
+    rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs,
+            prs, dx, dn, dndy)
+
+    rhs_viscous_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs,
+            prs, tmp, dx, dn, dndy, mu_ref, kappa_ref)
+
+    C_sound = np.sqrt(Cp/Cv*Rspecific*tmp)
+
+    non_reflecting_boundary_conditions(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
+        rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, C_sound, filter_amplitude, Ma, Ly, P_inf)
+
 if __name__ == "__main__":
     # read parameters
     with open('params.yaml') as f:
@@ -434,19 +449,56 @@ if __name__ == "__main__":
 
         dt *= 0.05
 
-        rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, prs, dx, dn, dndy)
+        rhs(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
+                egy_rhs, prs, dx, dn, dndy, Cp, Cv, Rspecific,
+                filter_amplitude, Ma, Ly, P_inf)
 
-        rhs_viscous_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, mu_ref, kappa_ref)
+        rho_next = rho +  (dt/6)*rho_rhs
+        rho_u_next = rho_u + (dt/6)*rho_u_rhs
+        rho_v_next = rho_v + (dt/6)*rho_v_rhs
+        egy_next = egy + (dt/6)*egy_rhs
 
-        C_sound = np.sqrt(Cp/Cv*Rspecific*tmp)
+        rho_1 = rho + (dt/2)*rho_rhs
+        rho_u_1 = rho_u + (dt/2)*rho_u_rhs
+        rho_v_1 = rho_v + (dt/2)*rho_v_rhs
+        egy_1 = egy + (dt/2)*egy_rhs
 
-        non_reflecting_boundary_conditions(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
-                rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, C_sound, filter_amplitude, Ma, Ly, P_inf)
+        rhs(rho_1, rho_u_1, rho_v_1, egy_1, rho_rhs, rho_u_rhs, rho_v_rhs,
+                egy_rhs, prs, dx, dn, dndy, Cp, Cv, Rspecific,
+                filter_amplitude, Ma, Ly, P_inf)
 
-        rho[...] = rho[...] + dt*rho_rhs
-        rho_u[...] = rho_u[...] + dt*rho_u_rhs
-        rho_v[...] = rho_v[...] + dt*rho_v_rhs
-        egy[...] = egy[...] + dt*egy_rhs
+        rho_next = rho_next +  (dt/3)*rho_rhs
+        rho_u_next = rho_u_next + (dt/3)*rho_u_rhs
+        rho_v_next = rho_v_next + (dt/3)*rho_v_rhs
+        egy_next = egy_next + (dt/3)*egy_rhs
+
+        rho_1 = rho + (dt/2)*rho_rhs
+        rho_u_1 = rho_u + (dt/2)*rho_u_rhs
+        rho_v_1 = rho_v + (dt/2)*rho_v_rhs
+        egy_1 = egy + (dt/2)*egy_rhs
+        
+        rhs(rho_1, rho_u_1, rho_v_1, egy_1, rho_rhs, rho_u_rhs, rho_v_rhs,
+                egy_rhs, prs, dx, dn, dndy, Cp, Cv, Rspecific,
+                filter_amplitude, Ma, Ly, P_inf)
+
+        rho_next = rho_next +  (dt/3)*rho_rhs
+        rho_u_next = rho_u_next + (dt/3)*rho_u_rhs
+        rho_v_next = rho_v_next + (dt/3)*rho_v_rhs
+        egy_next = egy_next + (dt/3)*egy_rhs
+
+        rho_1 = rho + (dt)*rho_rhs
+        rho_u_1 = rho_u + (dt)*rho_u_rhs
+        rho_v_1 = rho_v + (dt)*rho_v_rhs
+        egy_1 = egy + (dt)*egy_rhs
+
+        rhs(rho_1, rho_u_1, rho_v_1, egy_1, rho_rhs, rho_u_rhs, rho_v_rhs,
+                egy_rhs, prs, dx, dn, dndy, Cp, Cv, Rspecific,
+                filter_amplitude, Ma, Ly, P_inf)
+
+        rho = rho_next + (dt/6)*rho_rhs
+        rho_u = rho_u_next + (dt/6)*rho_u_rhs
+        rho_v = rho_v_next + rho_v + (dt/6)*rho_v_rhs
+        egy = egy_next + (dt/6)*egy_rhs
 
         apply_inner_filter(rho, filter_amplitude/10)
         apply_inner_filter(rho_u, filter_amplitude/10)
