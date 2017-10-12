@@ -278,10 +278,10 @@ def dfdy(f, dy):
     out = np.empty_like(f, dtype=np.float64)
     for i in prange(4, ny-4):
         for j in prange(nx):
-            out[i,j] =  (1./dy)*((4./5)*(f[i-1,j] - f[i+1,j]) +
-                    (-1./5)*(f[i-2,j] - f[i+2,j]) +
-                    (4./105)*(f[i-3,j] - f[i+3,j]) +
-                    (-1./280)*(f[i-4,j] - f[i+4,j]))
+            out[i,j] =  (1./dy)*((4./5)*(f[i+1,j] - f[i-1,j]) +
+                    (-1./5)*(f[i+2,j] - f[i-2,j]) +
+                    (4./105)*(f[i+3,j] - f[i-3,j]) +
+                    (-1./280)*(f[i+4,j] - f[i-4,j]))
             out[0,j] = (-11*f[0,j]+18*f[1,j]-9*f[2,j]+2*f[3,j])/(6.*dy)
             out[1,j] = (-2*f[0,j]-3*f[1,j]+6*f[2,j]-1*f[3,j])/(6.*dy)
             out[2,j] = 2*(f[3,j]-f[1,j])/(3*dy) - 1*(f[4,j]-f[0,j])/(12*dy)
