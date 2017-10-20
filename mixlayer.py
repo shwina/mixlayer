@@ -1,5 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import yaml
 from numba import jit, float64, prange
 import h5py
@@ -23,7 +22,7 @@ def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
                     (f[i+1,j] - f[i-1,j])/(2*dn)*d2ndy2[i-1,j-1] +
                     (f[i+1,j] + f[i-1,j])/(dn**2)*dndy[i-1,j-1]**2)/denominator[i-1,j-1]
             f[i,j] = f[i,j] + 1.6*(fnew - f[i,j])
-    print(np.linalg.norm(f-f_old))
+    return np.linalg.norm(f-f_old)
 
 def add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nperiod, dn, dndy, d2ndy2):
     N = np.shape(x)[0]
@@ -41,8 +40,6 @@ def add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nper
 
     amplitudes = [1, 0.5, 0.35, 0.35]
     for i in range(4):
-        #vort += np.exp(-np.pi*y**2/vorticity_thickness**2)*np.abs(
-        #    amplitudes[i]*np.sin(np.pi*x/(2**i*disturbance_wavelength)))
         fx += amplitudes[i]*np.abs(np.sin(np.pi*x/(2**i*disturbance_wavelength)))
         fx_max = np.max([np.max(fx), fx_max])
     
@@ -55,8 +52,9 @@ def add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nper
     vort[...] = (vort*Famp_2d*disturbance_wavelength*U_ref) / (circ/nperiod)
 
     for i in range(50000):
-        print(i)
-        jacobi_step(stream, dx, dn, -vort, dndy, d2ndy2)
+        err = jacobi_step(stream, dx, dn, -vort, dndy, d2ndy2)
+        if err <= 1e-5:
+            break
 
     u_pert = (stream[2:,1:-1] - stream[0:-2,1:-1])*dndy/(2*dn)
     v_pert = -(stream[1:-1,2:] - stream[1:-1,0:-2])/(2*dx)
@@ -383,11 +381,6 @@ if __name__ == "__main__":
     d2f_test = ((np.roll(f_test, -1, 1) - 2*f_test + np.roll(f_test, +1, 1))/(dx**2) +
             ((np.roll(f_test, -1, 0) - np.roll(f_test, +1, 0))/(2*dn))*d2ndy2[:-1] +
             ((np.roll(f_test, -1, 0) - 2*f_test + np.roll(f_test, +1, 0))/(dn**2))*dndy[:-1]**2)
-    
-    plt.plot(y[:-1,0], f_test[:,0], 'o')
-    plt.plot(y[:-1,0], d2f_test[:,0], 'o')
-    plt.plot(y[:-1,0], -(4*np.pi**2)/(Ly**2)*np.sin(2*np.pi*y[:-1,0]/Ly))
-    plt.show()
 
     # geometric parameters
     disturbance_wavelength = Lx/nperiod
@@ -422,13 +415,10 @@ if __name__ == "__main__":
     # read values of rho_u and rho_v since we don't know how
     # to generate them yet
 
-    #u_pert, v_pert = add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nperiod, dn, dndy, d2ndy2)
+    u_pert, v_pert = add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nperiod, dn, dndy, d2ndy2)
 
-    #rho_u += rho*u_pert
-    #rho_v += rho*v_pert
-
-    rho_u = np.loadtxt('init/u.txt').reshape([N, N])
-    rho_v = np.loadtxt('init/v.txt').reshape([N, N])
+    rho_u += rho*u_pert
+    rho_v += rho*v_pert
 
     egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*Cv*tmp
 
@@ -441,14 +431,13 @@ if __name__ == "__main__":
 
     t1 = timeit.default_timer()
     for i in range(10000):
-        print(i, egy.max())
 
         eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
 
         dt = calculate_timestep(x, y, rho, rho_u, rho_v, tmp, gamma_ref, mu_ref, kappa_ref,
             Cp, Cv, Rspecific, cfl_vel, cfl_visc)
 
-        dt *= 0.5
+        print("Iteration: {}    Time: {}    Total energy: {}".format(i, dt*i, np.sum(egy)))
 
         rho_0[...] = rho
         rho_u_0[...] = rho_u
@@ -543,8 +532,6 @@ if __name__ == "__main__":
         eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
 
         #-------------------------------------------------------------
-
-        print(egy.min(), egy.max())
 
         if i%200 == 0:
             f = h5py.File("{:05d}.hdf5".format(i))
