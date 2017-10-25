@@ -325,6 +325,7 @@ if __name__ == "__main__":
     Re = params['Re']
     Pr = params['Pr']
     nperiod = params['nperiod']
+    timesteps = params['timesteps']
 
     Rgas = params['Rgas']
     molwt = params['molwt']
@@ -369,13 +370,13 @@ if __name__ == "__main__":
         1 + (np.exp(-grid_beta) - 1)*((Ly/2)/Ly)))
     y = (Ly/2)*(1 + np.sinh(grid_beta*(y - grid_A))/np.sinh(
         grid_beta*grid_A))
-    dndy = np.sinh(grid_beta*grid_A)/(grid_beta*(Ly/2)*(1+((y/(Ly/2))-1)**2*np.sinh(grid_beta*grid_A)**2)**0.5)*Ly
+    dndy = np.sinh(grid_beta*grid_A)/(grid_beta*(Ly/2)*(1+((y/(Ly/2))-1)**2*np.sinh(grid_beta*grid_A)**2)**0.5)*Ly/Ly
     d2ndy2 = -Ly*(np.sinh(grid_beta*grid_A))**3*((y/(Ly/2))-1)/(grid_beta*
                 (Ly/2)**2*(
-                1 + ((y/(Ly/2))-1)**2*(np.sinh(grid_beta*grid_A))**2)**1.5)
+                1 + ((y/(Ly/2))-1)**2*(np.sinh(grid_beta*grid_A))**2)**1.5)/Ly
 
     y = y-Ly/2
-    dn = Ly*dn
+    dn = dn
 
     f_test = np.sin(2*np.pi*y[:-1]/Ly)
     d2f_test = ((np.roll(f_test, -1, 1) - 2*f_test + np.roll(f_test, +1, 1))/(dx**2) +
@@ -430,7 +431,7 @@ if __name__ == "__main__":
     egy_0 = egy.copy()
 
     t1 = timeit.default_timer()
-    for i in range(10000):
+    for i in range(timesteps):
 
         eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
 

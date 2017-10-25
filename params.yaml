@@ -8,6 +8,7 @@ Ma: 0.35
 Re: 400
 Pr: 0.697
 nperiod: 8 # number of perturbation wavelengths        
+timesteps: 1000
 
 # constants
 Rgas: 8314.0
