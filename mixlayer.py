@@ -366,14 +366,15 @@ if __name__ == "__main__":
     x = np.arange(p.N)*p.dx*np.ones([p.N, p.N])
     y = np.arange(0, 1+p.dn, p.dn)*np.ones([p.N, p.N])
     y = y.T
+
     p.grid_A = 1./(2*p.grid_beta)*np.log((1 + (np.exp(p.grid_beta) - 1)*((p.Ly/2)/p.Ly))/(
         1 + (np.exp(-p.grid_beta) - 1)*((p.Ly/2)/p.Ly)))
     y = (p.Ly/2)*(1 + np.sinh(p.grid_beta*(y - p.grid_A))/np.sinh(
         p.grid_beta*p.grid_A))
-    dndy = np.sinh(p.grid_beta*p.grid_A)/(p.grid_beta*(p.Ly/2)*(1+((y/(p.Ly/2))-1)**2*np.sinh(p.grid_beta*p.grid_A)**2)**0.5)*p.Ly
+    dndy = np.sinh(p.grid_beta*p.grid_A)/(p.grid_beta*(p.Ly/2)*(1+((y/(p.Ly/2))-1)**2*np.sinh(p.grid_beta*p.grid_A)**2)**0.5)
     d2ndy2 = -p.Ly*(np.sinh(p.grid_beta*p.grid_A))**3*((y/(p.Ly/2))-1)/(p.grid_beta*
                 (p.Ly/2)**2*(
-                1 + ((y/(p.Ly/2))-1)**2*(np.sinh(p.grid_beta*p.grid_A))**2)**1.5)
+                1 + ((y/(p.Ly/2))-1)**2*(np.sinh(p.grid_beta*p.grid_A))**2)**1.5)/p.Ly
 
     y = y-p.Ly/2
     dn = p.Ly*p.dn
@@ -428,7 +429,7 @@ if __name__ == "__main__":
     egy_0 = egy.copy()
 
     t1 = timeit.default_timer()
-    for i in range(10000):
+    for i in range(p.timesteps):
 
         eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 
