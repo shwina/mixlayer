@@ -3,6 +3,13 @@ import yaml
 from numba import jit, float64, prange
 import h5py
 
+from attrdict import AttrDict
+import yaml
+
+
+
+
+
 @jit(nopython=True, nogil=True)
 def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
     f_old = f.copy()
@@ -24,8 +31,15 @@ def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
             f[i,j] = f[i,j] + 1.6*(fnew - f[i,j])
     return np.linalg.norm(f-f_old)
 
-def add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nperiod, dn, dndy, d2ndy2):
-    N = np.shape(x)[0]
+def add_forcing(params, stream, vort, x, y, dndy, d2ndy2):
+    N = params.N
+    dn = params.dn
+    U_ref = params.U_ref
+    Famp_2d = params.Famp_2d
+    vorticity_thickness = params.vorticity_thickness
+    disturbance_wavelength = params.disturbance_wavelength
+    nperiod = params.nperiod
+
     dx = 1./N
     dy = x.copy()
     dy[:-1, :] = y[1:, :] - y[:-1, :]
@@ -70,12 +84,22 @@ def add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nper
 
     return u_pert, v_pert
 
-def eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific):
+def eos(params, rho, rho_u, rho_v, egy, tmp, prs):
+    Rspecific = params.Rspecific
+    Cv = params.Cv
     tmp[:, :] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho)/(rho*Cv)
     prs[:, :] = rho*Rspecific*tmp
 
-def calculate_timestep(x, y, rho, rho_u, rho_v, tmp,
-        gamma_ref, mu_ref, kappa_ref, Cp, Cv, Rspecific, cfl_vel, cfl_visc):
+def calculate_timestep(params, x, y, rho, rho_u, rho_v, tmp):
+
+    gamma_ref = params.gamma_ref
+    mu_ref = params.mu_ref
+    kappa_ref = params.kappa_ref
+    Cp = params.Cp
+    Cv = params.Cv
+    Rspecific = params.Rspecific
+    cfl_vel = params.cfl_vel
+    cfl_visc = params.cfl_visc
 
     # dx, dy
     N = np.shape(x)[0]
@@ -290,10 +314,19 @@ def dfdy(f, dy):
             out[-4,j] = -(3*(f[-5,j]-f[-3,j])/(4*dy) - 3*(f[-6,j]-f[-2,j])/(20*dy) + 1*(f[-7,j]-f[-1,j])/(60*dy))
     return out
 
-def rhs(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
-        egy_rhs, prs, tmp, dx, dn, dndy, Cp, Cv, Rspecific,
-        filter_amplitude, Ma, Ly, P_inf):
+def rhs(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, prs, tmp, dndy):
 
+    dx = params.dx
+    dn = params.dn
+    Cp = params.Cp
+    Cv = params.Cv
+    Rspecific = params.Rspecific
+    filter_amplitude = params.filter_amplitude
+    Ma = params.Ma
+    Ly = params.Ly
+    P_inf = params.P_inf
+    mu_ref = p.mu_ref
+    kappa_ref = p.kappa_ref
 
     rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs,
             prs, dx, dn, dndy)
@@ -307,120 +340,85 @@ def rhs(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
         rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, C_sound, filter_amplitude, Ma, Ly, P_inf)
 
 if __name__ == "__main__":
-    # read parameters
+    p = AttrDict({})
     with open('params.yaml') as f:
-        params = yaml.load(f)
+        p.update(yaml.load(f))
 
-    N = params['N']
-    Lx = params['Lx']
-    Ly = Lx*((N-1)/N)*2.
-
-    Famp_2d = params['Famp_2d']
-
-    P_inf = params['P_inf']
-    T_inf1 = params['T_inf1']
-    T_inf2 = params['T_inf2']
-
-    Ma = params['Ma']
-    Re = params['Re']
-    Pr = params['Pr']
-    nperiod = params['nperiod']
-
-    Rgas = params['Rgas']
-    molwt = params['molwt']
-
-    grid_beta = params['grid_beta']
-
-    cfl_vel = params['cfl_vel']
-    cfl_visc = params['cfl_visc']
-
-    filter_amplitude = params['filter_amplitude']
+    p.Ly = p.Lx*((p.N-1)/p.N)*2.
 
     # get free stream velocities:
-    Rspecific = Rgas/molwt
-    T_ref = max([T_inf2, 344.6])
-    Cp = Pr*(3.227e-3 + 8.3894e-5*T_ref - 1.958e-8*T_ref**2)/(
-            6.109e-6 + 4.604e-8*T_ref - 1.051e-11*T_ref**2)
-    Cv = Cp - Rspecific
-    C_sound1 = np.sqrt((Cp/Cv)*(Rspecific)*T_inf1)
-    C_sound2 = np.sqrt((Cp/Cv)*(Rspecific)*T_inf2)
-    rho_ref1 = P_inf/(Rspecific*T_inf1)
-    rho_ref2 = P_inf/(Rspecific*T_inf2)
-    U_inf1 = 2*Ma*C_sound1/(1+np.sqrt(rho_ref1/rho_ref2)*(C_sound1/C_sound2))
-    U_inf2 = -np.sqrt(rho_ref1/rho_ref2)*U_inf1
-    U_ref = U_inf1-U_inf2
-
-    print(Rspecific)
-    print(Cp)
-    print(Cv)
-    print(C_sound1)
-    print(C_sound2)
-    print(rho_ref1)
-    print(U_inf1)
-    print(U_inf2)
+    p.Rspecific = p.Rgas/p.molwt
+    p.T_ref = max([p.T_inf2, 344.6])
+    p.Cp = p.Pr*(3.227e-3 + 8.3894e-5*p.T_ref - 1.958e-8*p.T_ref**2)/(
+            6.109e-6 + 4.604e-8*p.T_ref - 1.051e-11*p.T_ref**2)
+    p.Cv = p.Cp - p.Rspecific
+    p.C_sound1 = np.sqrt((p.Cp/p.Cv)*(p.Rspecific)*p.T_inf1)
+    p.C_sound2 = np.sqrt((p.Cp/p.Cv)*(p.Rspecific)*p.T_inf2)
+    p.rho_ref1 = p.P_inf/(p.Rspecific*p.T_inf1)
+    p.rho_ref2 = p.P_inf/(p.Rspecific*p.T_inf2)
+    p.U_inf1 = 2*p.Ma*p.C_sound1/(1+np.sqrt(p.rho_ref1/p.rho_ref2)*(p.C_sound1/p.C_sound2))
+    p.U_inf2 = -np.sqrt(p.rho_ref1/p.rho_ref2)*p.U_inf1
+    p.U_ref = p.U_inf1-p.U_inf2
 
     # construct grid
-    dx = Lx/N
-    dn = 1./(N-1)
-    x = np.arange(N)*dx*np.ones([N, N])
-    y = np.arange(0, 1+dn, dn)*np.ones([N, N])
+    p.dx = p.Lx/p.N
+    p.dn = 1./(p.N-1)
+    x = np.arange(p.N)*p.dx*np.ones([p.N, p.N])
+    y = np.arange(0, 1+p.dn, p.dn)*np.ones([p.N, p.N])
     y = y.T
-    grid_A = 1./(2*grid_beta)*np.log((1 + (np.exp(grid_beta) - 1)*((Ly/2)/Ly))/(
-        1 + (np.exp(-grid_beta) - 1)*((Ly/2)/Ly)))
-    y = (Ly/2)*(1 + np.sinh(grid_beta*(y - grid_A))/np.sinh(
-        grid_beta*grid_A))
-    dndy = np.sinh(grid_beta*grid_A)/(grid_beta*(Ly/2)*(1+((y/(Ly/2))-1)**2*np.sinh(grid_beta*grid_A)**2)**0.5)*Ly
-    d2ndy2 = -Ly*(np.sinh(grid_beta*grid_A))**3*((y/(Ly/2))-1)/(grid_beta*
-                (Ly/2)**2*(
-                1 + ((y/(Ly/2))-1)**2*(np.sinh(grid_beta*grid_A))**2)**1.5)
+    p.grid_A = 1./(2*p.grid_beta)*np.log((1 + (np.exp(p.grid_beta) - 1)*((p.Ly/2)/p.Ly))/(
+        1 + (np.exp(-p.grid_beta) - 1)*((p.Ly/2)/p.Ly)))
+    y = (p.Ly/2)*(1 + np.sinh(p.grid_beta*(y - p.grid_A))/np.sinh(
+        p.grid_beta*p.grid_A))
+    dndy = np.sinh(p.grid_beta*p.grid_A)/(p.grid_beta*(p.Ly/2)*(1+((y/(p.Ly/2))-1)**2*np.sinh(p.grid_beta*p.grid_A)**2)**0.5)*p.Ly
+    d2ndy2 = -p.Ly*(np.sinh(p.grid_beta*p.grid_A))**3*((y/(p.Ly/2))-1)/(p.grid_beta*
+                (p.Ly/2)**2*(
+                1 + ((y/(p.Ly/2))-1)**2*(np.sinh(p.grid_beta*p.grid_A))**2)**1.5)
 
-    y = y-Ly/2
-    dn = Ly*dn
-
-    f_test = np.sin(2*np.pi*y[:-1]/Ly)
-    d2f_test = ((np.roll(f_test, -1, 1) - 2*f_test + np.roll(f_test, +1, 1))/(dx**2) +
-            ((np.roll(f_test, -1, 0) - np.roll(f_test, +1, 0))/(2*dn))*d2ndy2[:-1] +
-            ((np.roll(f_test, -1, 0) - 2*f_test + np.roll(f_test, +1, 0))/(dn**2))*dndy[:-1]**2)
+    y = y-p.Ly/2
+    dn = p.Ly*p.dn
 
     # geometric parameters
-    disturbance_wavelength = Lx/nperiod
-    vorticity_thickness = disturbance_wavelength/7.29
+    p.disturbance_wavelength = p.Lx/p.nperiod
+    p.vorticity_thickness = p.disturbance_wavelength/7.29
 
     # reference viscosity; thermal and molecular diffusivities
-    rho_ref = (rho_ref1+rho_ref2)/2.0
-    mu_ref = (rho_ref*(U_inf1-U_inf2)*vorticity_thickness)/Re
-    kappa_ref = 0.5*(Cp+Cp)*mu_ref/Pr 
-    gamma_ref = mu_ref/(rho_ref*Pr)
+    p.rho_ref = (p.rho_ref1+p.rho_ref2)/2.0
+    p.mu_ref = (p.rho_ref*(p.U_inf1-p.U_inf2)*p.vorticity_thickness)/p.Re
+    p.kappa_ref = 0.5*(p.Cp+p.Cp)*p.mu_ref/p.Pr 
+    p.gamma_ref = p.mu_ref/(p.rho_ref*p.Pr)
 
     # initialize fields
-    rho = np.zeros([N, N], dtype=np.float64)
-    rho_u = np.zeros([N, N], dtype=np.float64)
-    rho_v = np.zeros([N, N], dtype=np.float64)
-    tmp = np.zeros([N, N], dtype=np.float64)
-    prs = np.zeros([N, N], dtype=np.float64)
-    egy = np.zeros([N, N], dtype=np.float64)
-    rho_rhs = np.zeros([N, N], dtype=np.float64)
-    rho_u_rhs = np.zeros([N, N], dtype=np.float64)
-    rho_v_rhs = np.zeros([N, N], dtype=np.float64)
-    egy_rhs = np.zeros([N, N], dtype=np.float64)
-    stream = np.zeros([N, N], dtype=np.float64)
-    vort = np.zeros([N, N], dtype=np.float64)
+    dims = [p.N, p.N]
 
-    weight = np.tanh(np.sqrt(np.pi)*y/vorticity_thickness)
-    tmp[:, :] = T_inf2 + (weight+1)/2.*(T_inf1-T_inf2)
-    rho[:, :] = P_inf/(Rspecific*tmp[:, :])
-    rho_u[:, :] = rho*(U_inf2+(weight+1)/2.*(U_inf1-U_inf2))
+    rho = np.zeros(dims, dtype=np.float64)
+    rho_u = np.zeros(dims, dtype=np.float64)
+    rho_v = np.zeros(dims, dtype=np.float64)
+    tmp = np.zeros(dims, dtype=np.float64)
+    prs = np.zeros(dims, dtype=np.float64)
+    egy = np.zeros(dims, dtype=np.float64)
+    rho_rhs = np.zeros(dims, dtype=np.float64)
+    rho_u_rhs = np.zeros(dims, dtype=np.float64)
+    rho_v_rhs = np.zeros(dims, dtype=np.float64)
+    egy_rhs = np.zeros(dims, dtype=np.float64)
+    stream = np.zeros(dims, dtype=np.float64)
+    vort = np.zeros(dims, dtype=np.float64)
+
+    weight = np.tanh(np.sqrt(np.pi)*y/p.vorticity_thickness)
+    tmp[:, :] = p.T_inf2 + (weight+1)/2.*(p.T_inf1-p.T_inf2)
+    rho[:, :] = p.P_inf/(p.Rspecific*tmp[:, :])
+    rho_u[:, :] = rho*(p.U_inf2+(weight+1)/2.*(p.U_inf1-p.U_inf2))
     rho_v[:, :] = 0.0
 
     # read values of rho_u and rho_v since we don't know how
     # to generate them yet
 
-    u_pert, v_pert = add_forcing(stream, vort, x, y, U_ref, Famp_2d, disturbance_wavelength, nperiod, dn, dndy, d2ndy2)
+    u_pert, v_pert = add_forcing(p, stream, vort, x, y, dndy, d2ndy2)
 
     rho_u += rho*u_pert
     rho_v += rho*v_pert
 
-    egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*Cv*tmp
+    egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*p.Cv*tmp
 
     import timeit
 
@@ -432,10 +430,9 @@ if __name__ == "__main__":
     t1 = timeit.default_timer()
     for i in range(10000):
 
-        eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
+        eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 
-        dt = calculate_timestep(x, y, rho, rho_u, rho_v, tmp, gamma_ref, mu_ref, kappa_ref,
-            Cp, Cv, Rspecific, cfl_vel, cfl_visc)
+        dt = calculate_timestep(p, x, y, rho, rho_u, rho_v, tmp)
 
         print("Iteration: {}    Time: {}    Total energy: {}".format(i, dt*i, np.sum(egy)))
 
@@ -446,9 +443,8 @@ if __name__ == "__main__":
 
         #-------------------------------------------------------------
 
-        rhs(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
-            egy_rhs, prs, tmp, dx, dn, dndy, Cp, Cv, Rspecific,
-            filter_amplitude, Ma, Ly, P_inf)
+        rhs(p, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
+                egy_rhs, prs, tmp, dndy)
 
         rho = rho_0 + (dt/2)*rho_rhs
         rho_u = rho_u_0 + (dt/2)*rho_u_rhs
@@ -460,18 +456,17 @@ if __name__ == "__main__":
         rho_v_next = (dt/6)*rho_v_rhs
         egy_next = (dt/6)*egy_rhs
 
-        apply_inner_filter(rho, filter_amplitude/10)
-        apply_inner_filter(rho_u, filter_amplitude/10)
-        apply_inner_filter(rho_v, filter_amplitude/10)
-        apply_inner_filter(egy, filter_amplitude/10)
+        apply_inner_filter(rho, p.filter_amplitude/10)
+        apply_inner_filter(rho_u, p.filter_amplitude/10)
+        apply_inner_filter(rho_v, p.filter_amplitude/10)
+        apply_inner_filter(egy, p.filter_amplitude/10)
 
-        eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
+        eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 
         #-------------------------------------------------------------
 
-        rhs(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
-            egy_rhs, prs, tmp, dx, dn, dndy, Cp, Cv, Rspecific,
-            filter_amplitude, Ma, Ly, P_inf)
+        rhs(p, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
+                egy_rhs, prs, tmp, dndy)
 
         rho = rho_0 + (dt/2)*rho_rhs
         rho_u = rho_u_0 + (dt/2)*rho_u_rhs
@@ -483,18 +478,17 @@ if __name__ == "__main__":
         rho_v_next = rho_v_next  + (dt/3)*rho_v_rhs
         egy_next = egy_next  + (dt/3)*egy_rhs
 
-        apply_inner_filter(rho, filter_amplitude/10)
-        apply_inner_filter(rho_u, filter_amplitude/10)
-        apply_inner_filter(rho_v, filter_amplitude/10)
-        apply_inner_filter(egy, filter_amplitude/10)
+        apply_inner_filter(rho, p.filter_amplitude/10)
+        apply_inner_filter(rho_u, p.filter_amplitude/10)
+        apply_inner_filter(rho_v, p.filter_amplitude/10)
+        apply_inner_filter(egy, p.filter_amplitude/10)
 
-        eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
+        eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 
         #-------------------------------------------------------------
         
-        rhs(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
-            egy_rhs, prs, tmp, dx, dn, dndy, Cp, Cv, Rspecific,
-            filter_amplitude, Ma, Ly, P_inf)
+        rhs(p, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
+                egy_rhs, prs, tmp, dndy)
 
         rho = rho_0 + (dt)*rho_rhs
         rho_u = rho_u_0 + (dt)*rho_u_rhs
@@ -506,30 +500,29 @@ if __name__ == "__main__":
         rho_v_next = rho_v_next  + (dt/3)*rho_v_rhs
         egy_next = egy_next  + (dt/3)*egy_rhs
 
-        apply_inner_filter(rho, filter_amplitude/10)
-        apply_inner_filter(rho_u, filter_amplitude/10)
-        apply_inner_filter(rho_v, filter_amplitude/10)
-        apply_inner_filter(egy, filter_amplitude/10)
+        apply_inner_filter(rho, p.filter_amplitude/10)
+        apply_inner_filter(rho_u, p.filter_amplitude/10)
+        apply_inner_filter(rho_v, p.filter_amplitude/10)
+        apply_inner_filter(egy, p.filter_amplitude/10)
 
-        eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
+        eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 
         #-------------------------------------------------------------
 
-        rhs(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
-            egy_rhs, prs, tmp, dx, dn, dndy, Cp, Cv, Rspecific,
-            filter_amplitude, Ma, Ly, P_inf)
+        rhs(p, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
+                egy_rhs, prs, tmp, dndy)
 
         rho = rho_0 + rho_next + (dt/6)*rho_rhs
         rho_u = rho_u_0 + rho_u_next + (dt/6)*rho_u_rhs
         rho_v = rho_v_0 + rho_v_next + (dt/6)*rho_v_rhs
         egy = egy_0 + egy_next + (dt/6)*egy_rhs
 
-        apply_inner_filter(rho, filter_amplitude/10)
-        apply_inner_filter(rho_u, filter_amplitude/10)
-        apply_inner_filter(rho_v, filter_amplitude/10)
-        apply_inner_filter(egy, filter_amplitude/10)
+        apply_inner_filter(rho, p.filter_amplitude/10)
+        apply_inner_filter(rho_u, p.filter_amplitude/10)
+        apply_inner_filter(rho_v, p.filter_amplitude/10)
+        apply_inner_filter(egy, p.filter_amplitude/10)
 
-        eos(rho, rho_u, rho_v, egy, tmp, prs, Cv, Rspecific)
+        eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 
         #-------------------------------------------------------------
 
