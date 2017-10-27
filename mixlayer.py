@@ -63,8 +63,8 @@ def add_forcing(params, stream, vort, x, y, dndy, d2ndy2):
 
     for i in range(50000):
         err = jacobi_step(stream, dx, dn, -vort, dndy, d2ndy2)
-        print(err)
         if err <= 1e-5:
+            print("Jacobi steps: {}".format(i))
             break
 
     u_pert = (stream[2:,1:-1] - stream[0:-2,1:-1])*dndy/(2*dn)
