@@ -6,10 +6,6 @@ import h5py
 from attrdict import AttrDict
 import yaml
 
-
-
-
-
 @jit(nopython=True, nogil=True)
 def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
     f_old = f.copy()
@@ -67,6 +63,7 @@ def add_forcing(params, stream, vort, x, y, dndy, d2ndy2):
 
     for i in range(50000):
         err = jacobi_step(stream, dx, dn, -vort, dndy, d2ndy2)
+        print(err)
         if err <= 1e-5:
             break
 
@@ -91,7 +88,6 @@ def eos(params, rho, rho_u, rho_v, egy, tmp, prs):
     prs[:, :] = rho*Rspecific*tmp
 
 def calculate_timestep(params, x, y, rho, rho_u, rho_v, tmp):
-
     gamma_ref = params.gamma_ref
     mu_ref = params.mu_ref
     kappa_ref = params.kappa_ref
@@ -217,9 +213,17 @@ def apply_inner_filter(f, filter_amplitude):
     
     f[...] = f[...] - filter_amplitude*inner_filter
 
-def non_reflecting_boundary_conditions(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
-        rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, C_sound, filter_amplitude,
-        Ma, Ly, P_inf):
+def non_reflecting_boundary_conditions(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
+        rho_v_rhs, egy_rhs, prs, tmp, dndy):
+    
+    dx = params.dx
+    dn = params.dn
+    filter_amplitude = params.filter_amplitude
+    Ma = params.Ma
+    Ly = params.Ly
+    P_inf = params.P_inf
+
+    C_sound = np.sqrt(params.Cp/params.Cv*params.Rspecific*tmp)
 
     dpdy = dfdy(prs, dn)*dndy
     drhody = dfdy(rho, dn)*dndy
@@ -334,60 +338,15 @@ def rhs(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, 
     rhs_viscous_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs,
             prs, tmp, dx, dn, dndy, mu_ref, kappa_ref)
 
-    C_sound = np.sqrt(Cp/Cv*Rspecific*tmp)
-
-    non_reflecting_boundary_conditions(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
-        rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, C_sound, filter_amplitude, Ma, Ly, P_inf)
+    non_reflecting_boundary_conditions(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
+            rho_v_rhs, egy_rhs, prs, tmp, dndy)
 
 if __name__ == "__main__":
-    p = AttrDict({})
-    with open('params.yaml') as f:
-        p.update(yaml.load(f))
 
-    p.Ly = p.Lx*((p.N-1)/p.N)*2.
+    from params import p
+    from grid import asinh_grid
 
-    # get free stream velocities:
-    p.Rspecific = p.Rgas/p.molwt
-    p.T_ref = max([p.T_inf2, 344.6])
-    p.Cp = p.Pr*(3.227e-3 + 8.3894e-5*p.T_ref - 1.958e-8*p.T_ref**2)/(
-            6.109e-6 + 4.604e-8*p.T_ref - 1.051e-11*p.T_ref**2)
-    p.Cv = p.Cp - p.Rspecific
-    p.C_sound1 = np.sqrt((p.Cp/p.Cv)*(p.Rspecific)*p.T_inf1)
-    p.C_sound2 = np.sqrt((p.Cp/p.Cv)*(p.Rspecific)*p.T_inf2)
-    p.rho_ref1 = p.P_inf/(p.Rspecific*p.T_inf1)
-    p.rho_ref2 = p.P_inf/(p.Rspecific*p.T_inf2)
-    p.U_inf1 = 2*p.Ma*p.C_sound1/(1+np.sqrt(p.rho_ref1/p.rho_ref2)*(p.C_sound1/p.C_sound2))
-    p.U_inf2 = -np.sqrt(p.rho_ref1/p.rho_ref2)*p.U_inf1
-    p.U_ref = p.U_inf1-p.U_inf2
-
-    # construct grid
-    p.dx = p.Lx/p.N
-    p.dn = 1./(p.N-1)
-    x = np.arange(p.N)*p.dx*np.ones([p.N, p.N])
-    y = np.arange(0, 1+p.dn, p.dn)*np.ones([p.N, p.N])
-    y = y.T
-
-    p.grid_A = 1./(2*p.grid_beta)*np.log((1 + (np.exp(p.grid_beta) - 1)*((p.Ly/2)/p.Ly))/(
-        1 + (np.exp(-p.grid_beta) - 1)*((p.Ly/2)/p.Ly)))
-    y = (p.Ly/2)*(1 + np.sinh(p.grid_beta*(y - p.grid_A))/np.sinh(
-        p.grid_beta*p.grid_A))
-    dndy = np.sinh(p.grid_beta*p.grid_A)/(p.grid_beta*(p.Ly/2)*(1+((y/(p.Ly/2))-1)**2*np.sinh(p.grid_beta*p.grid_A)**2)**0.5)
-    d2ndy2 = -p.Ly*(np.sinh(p.grid_beta*p.grid_A))**3*((y/(p.Ly/2))-1)/(p.grid_beta*
-                (p.Ly/2)**2*(
-                1 + ((y/(p.Ly/2))-1)**2*(np.sinh(p.grid_beta*p.grid_A))**2)**1.5)/p.Ly
-
-    y = y-p.Ly/2
-    dn = p.Ly*p.dn
-
-    # geometric parameters
-    p.disturbance_wavelength = p.Lx/p.nperiod
-    p.vorticity_thickness = p.disturbance_wavelength/7.29
-
-    # reference viscosity; thermal and molecular diffusivities
-    p.rho_ref = (p.rho_ref1+p.rho_ref2)/2.0
-    p.mu_ref = (p.rho_ref*(p.U_inf1-p.U_inf2)*p.vorticity_thickness)/p.Re
-    p.kappa_ref = 0.5*(p.Cp+p.Cp)*p.mu_ref/p.Pr 
-    p.gamma_ref = p.mu_ref/(p.rho_ref*p.Pr)
+    x, y, dndy, d2ndy2 = asinh_grid(p.N, p.N, p.Lx, p.Ly, p.grid_beta)
 
     # initialize fields
     dims = [p.N, p.N]
