@@ -121,9 +121,12 @@ def calculate_timestep(params, x, y, rho, rho_u, rho_v, tmp):
     dt = np.min(np.minimum(np.minimum(test_1, test_2), test_3))
     return dt
 
-def rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
-        rho_v_rhs, egy_rhs, prs, dx, dn, dndy):
+def rhs_euler_terms(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
+        rho_v_rhs, egy_rhs, prs, dndy):
  
+    dx = params.dx
+    dn = params.dn
+
     rho_rhs[...] = -dfdy(rho_v, dn)*dndy
     rho_rhs[[0,-1], :] = 0
     rho_rhs[...] += -dfdx(rho_u, dx)
@@ -142,9 +145,14 @@ def rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
     egy_rhs_y[[0,-1], :] = 0
     egy_rhs[...] = egy_rhs_x + egy_rhs_y
 
-def rhs_viscous_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
-        rho_v_rhs, egy_rhs, prs, tmp, dx, dn, dndy, mu, kappa):
+def rhs_viscous_terms(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
+        rho_v_rhs, egy_rhs, prs, tmp, dndy):
     
+    dx = params.dx
+    dn = params.dn
+    mu = params.mu_ref
+    kappa = params.kappa_ref
+
     div_vel = dfdx(rho_u/rho, dx) + dfdy(rho_v/rho, dn)*dndy
     tau_11 = -(2./3)*mu*div_vel + 2*mu*dfdx(rho_u/rho, dx) 
     tau_12 = mu*(dfdx(rho_v/rho, dx) + dfdy(rho_u/rho, dn)*dndy)
@@ -157,16 +165,19 @@ def rhs_viscous_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
     rho_v_rhs += (dfdx(tau_12, dx) + dfdy(tau_22,dn)*dndy)
     egy_rhs += (dfdx(rho_u/rho*tau_11, dx) + dfdx(rho_v/rho*tau_12, dx) + dfdy(rho_u/rho*tau_12, dn)*dndy + dfdy(rho_v/rho*tau_22, dn)*dndy) + kappa*(dfdx(dfdx(tmp, dx), dx) + dfdy(dfdy(tmp, dn)*dndy, dn)*dndy)
 
-def apply_boundary_filter(f, filter_amplitude):
+def apply_boundary_filter(params, f):
     f[0, :] = f[0, :] - (f[0, :] - 5*f[1, :]
                 + 10*f[2, :] - 10*f[3, :] + 5*f[4, :]
-                - f[5, :])*filter_amplitude
+                - f[5, :])*params.filter_amplitude
 
     f[-1, :] = f[-1, :] - (f[-1, :] - 5*f[-2, :]
                 + 10*f[-3, :] - 10*f[-4, :] + 5*f[-5, :]
-                - f[-6, :])*filter_amplitude
+                - f[-6, :])*params.filter_amplitude
     
-def apply_inner_filter(f, filter_amplitude):
+def apply_inner_filter(params, f):
+
+    filter_amplitude = params.filter_amplitude/10
+
     ny, nx = f.shape
     inner_filter = np.empty_like(f, dtype=np.float64)
     
@@ -231,7 +242,7 @@ def non_reflecting_boundary_conditions(params, rho, rho_u, rho_v, egy, rho_rhs, 
     dvdy = dfdy(rho_v/rho, dn)*dndy
 
     for dxdy in dpdy, drhody, dudy, dvdy:
-        apply_boundary_filter(dxdy, filter_amplitude)
+        apply_boundary_filter(params, dxdy)
     
     L_1 = (rho_v/rho - C_sound) * (dpdy - rho*C_sound*dvdy)
     L_2 = rho_v/rho* (C_sound**2 * drhody - dpdy)
@@ -271,7 +282,7 @@ def non_reflecting_boundary_conditions(params, rho, rho_u, rho_v, egy, rho_rhs, 
 
     # apply rhs filter
     for rhs in rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs:
-        apply_boundary_filter(rhs, filter_amplitude)
+        apply_boundary_filter(params, rhs)
 
 @jit(nopython=True, nogil=True, parallel=True)
 def dfdx(f, dx):
@@ -320,23 +331,11 @@ def dfdy(f, dy):
 
 def rhs(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, prs, tmp, dndy):
 
-    dx = params.dx
-    dn = params.dn
-    Cp = params.Cp
-    Cv = params.Cv
-    Rspecific = params.Rspecific
-    filter_amplitude = params.filter_amplitude
-    Ma = params.Ma
-    Ly = params.Ly
-    P_inf = params.P_inf
-    mu_ref = p.mu_ref
-    kappa_ref = p.kappa_ref
+    rhs_euler_terms(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs,
+            prs, dndy)
 
-    rhs_euler_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs,
-            prs, dx, dn, dndy)
-
-    rhs_viscous_terms(rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs,
-            prs, tmp, dx, dn, dndy, mu_ref, kappa_ref)
+    rhs_viscous_terms(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs,
+            prs, tmp, dndy)
 
     non_reflecting_boundary_conditions(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
             rho_v_rhs, egy_rhs, prs, tmp, dndy)
@@ -416,10 +415,10 @@ if __name__ == "__main__":
         rho_v_next = (dt/6)*rho_v_rhs
         egy_next = (dt/6)*egy_rhs
 
-        apply_inner_filter(rho, p.filter_amplitude/10)
-        apply_inner_filter(rho_u, p.filter_amplitude/10)
-        apply_inner_filter(rho_v, p.filter_amplitude/10)
-        apply_inner_filter(egy, p.filter_amplitude/10)
+        apply_inner_filter(p, rho)
+        apply_inner_filter(p, rho_u)
+        apply_inner_filter(p, rho_v)
+        apply_inner_filter(p, egy)
 
         eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 
@@ -438,10 +437,10 @@ if __name__ == "__main__":
         rho_v_next = rho_v_next  + (dt/3)*rho_v_rhs
         egy_next = egy_next  + (dt/3)*egy_rhs
 
-        apply_inner_filter(rho, p.filter_amplitude/10)
-        apply_inner_filter(rho_u, p.filter_amplitude/10)
-        apply_inner_filter(rho_v, p.filter_amplitude/10)
-        apply_inner_filter(egy, p.filter_amplitude/10)
+        apply_inner_filter(p, rho)
+        apply_inner_filter(p, rho_u)
+        apply_inner_filter(p, rho_v)
+        apply_inner_filter(p, egy)
 
         eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 
@@ -460,10 +459,10 @@ if __name__ == "__main__":
         rho_v_next = rho_v_next  + (dt/3)*rho_v_rhs
         egy_next = egy_next  + (dt/3)*egy_rhs
 
-        apply_inner_filter(rho, p.filter_amplitude/10)
-        apply_inner_filter(rho_u, p.filter_amplitude/10)
-        apply_inner_filter(rho_v, p.filter_amplitude/10)
-        apply_inner_filter(egy, p.filter_amplitude/10)
+        apply_inner_filter(p, rho)
+        apply_inner_filter(p, rho_u)
+        apply_inner_filter(p, rho_v)
+        apply_inner_filter(p, egy)
 
         eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 
@@ -477,10 +476,10 @@ if __name__ == "__main__":
         rho_v = rho_v_0 + rho_v_next + (dt/6)*rho_v_rhs
         egy = egy_0 + egy_next + (dt/6)*egy_rhs
 
-        apply_inner_filter(rho, p.filter_amplitude/10)
-        apply_inner_filter(rho_u, p.filter_amplitude/10)
-        apply_inner_filter(rho_v, p.filter_amplitude/10)
-        apply_inner_filter(egy, p.filter_amplitude/10)
+        apply_inner_filter(p, rho)
+        apply_inner_filter(p, rho_u)
+        apply_inner_filter(p, rho_v)
+        apply_inner_filter(p, egy)
 
         eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 

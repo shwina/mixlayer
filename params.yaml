@@ -12,6 +12,8 @@ timesteps: 1000
 
 # constants
 Rgas: 8314.0
+Cp: 1005.0
+Cv: 718
 
 # initial conditions
 P_inf: 101325.
