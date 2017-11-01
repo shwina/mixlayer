@@ -1,3 +1,5 @@
+from timestepping import RK4
+
 import numpy as np
 import yaml
 from numba import jit, float64, prange
@@ -27,9 +29,12 @@ def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
             f[i,j] = f[i,j] + 1.6*(fnew - f[i,j])
     return np.linalg.norm(f-f_old)
 
-def add_forcing(params, stream, vort, x, y, dndy, d2ndy2):
+def add_forcing(params, fields, x, y, dndy, d2ndy2):
     N = params.N
     dn = params.dn
+    stream = fields.stream
+    vort = fields.vort
+
     U_ref = params.U_ref
     Famp_2d = params.Famp_2d
     vorticity_thickness = params.vorticity_thickness
@@ -81,15 +86,31 @@ def add_forcing(params, stream, vort, x, y, dndy, d2ndy2):
 
     return u_pert, v_pert
 
-def eos(params, rho, rho_u, rho_v, egy, tmp, prs):
+def eos(params, fields):
+
+    rho = fields.rho
+    rho_u = fields.rho_u
+    rho_v = fields.rho_v
+    egy = fields.egy
+    tmp = fields.tmp
+    prs = fields.prs
+
     Rspecific = params.Rspecific
     Cv = params.Cv
+
     tmp[:, :] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho)/(rho*Cv)
     prs[:, :] = rho*Rspecific*tmp
 
-def calculate_timestep(params, x, y, rho, rho_u, rho_v, tmp):
+def calculate_timestep(params, fields, x, y):
 
-    eos(params, rho, rho_u, rho_v, egy, tmp, prs)
+    eos(params, fields)
+ 
+    rho = fields.rho
+    rho_u = fields.rho_u
+    rho_v = fields.rho_v
+    egy = fields.egy
+    tmp = fields.tmp
+    prs = fields.prs
 
     gamma_ref = params.gamma_ref
     mu_ref = params.mu_ref
@@ -124,9 +145,19 @@ def calculate_timestep(params, x, y, rho, rho_u, rho_v, tmp):
     dt = np.min(np.minimum(np.minimum(test_1, test_2), test_3))
     return dt
 
-def rhs_euler_terms(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
-        rho_v_rhs, egy_rhs, prs, dndy):
+def rhs_euler_terms(params, fields, dndy):
  
+    rho = fields.rho
+    rho_u = fields.rho_u
+    rho_v = fields.rho_v
+    egy = fields.egy
+    tmp = fields.tmp
+    prs = fields.prs
+    rho_rhs = fields.rho_rhs
+    rho_u_rhs = fields.rho_u_rhs
+    rho_v_rhs = fields.rho_v_rhs
+    egy_rhs = fields.egy_rhs
+
     dx = params.dx
     dn = params.dn
 
@@ -148,8 +179,18 @@ def rhs_euler_terms(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
     egy_rhs_y[[0,-1], :] = 0
     egy_rhs[...] = egy_rhs_x + egy_rhs_y
 
-def rhs_viscous_terms(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
-        rho_v_rhs, egy_rhs, prs, tmp, dndy):
+def rhs_viscous_terms(params, fields, dndy):
+
+    rho = fields.rho
+    rho_u = fields.rho_u
+    rho_v = fields.rho_v
+    egy = fields.egy
+    tmp = fields.tmp
+    prs = fields.prs
+    rho_rhs = fields.rho_rhs
+    rho_u_rhs = fields.rho_u_rhs
+    rho_v_rhs = fields.rho_v_rhs
+    egy_rhs = fields.egy_rhs
     
     dx = params.dx
     dn = params.dn
@@ -177,59 +218,70 @@ def apply_boundary_filter(params, f):
                 + 10*f[-3, :] - 10*f[-4, :] + 5*f[-5, :]
                 - f[-6, :])*params.filter_amplitude
     
-def apply_inner_filter(params, f):
+def apply_inner_filter(params, fields):
 
-    filter_amplitude = params.filter_amplitude/10
+    for f in fields.rho, fields.rho_u, fields.rho_v, fields.egy:
+        filter_amplitude = params.filter_amplitude/10
 
-    ny, nx = f.shape
-    inner_filter = np.empty_like(f, dtype=np.float64)
+        ny, nx = f.shape
+        inner_filter = np.empty_like(f, dtype=np.float64)
+        
+        inner_filter[...] = (252*f[...] -210*(np.roll(f,-1,1)+np.roll(f,+1,1)) +
+                120*(np.roll(f,-2,1)+np.roll(f,+2,1)) +
+                -45*(np.roll(f,-3,1)+np.roll(f,+3,1)) +
+                10*(np.roll(f,-4,1)+np.roll(f,+4,1)) +
+                -1*(np.roll(f,-5,1)+np.roll(f,+5,1)))
+
+        inner_filter[5:-5, :] += (252*f[...]
+                -210*(np.roll(f,-1,0)+np.roll(f,+1,0)) + 
+                120*(np.roll(f,-2,0)+np.roll(f,+2,0)) +
+                -45*(np.roll(f,-3,0)+np.roll(f,+3,0)) +
+                10*(np.roll(f,-4,0)+np.roll(f,+4,0)) +
+                -1*(np.roll(f,-5,0)+np.roll(f,+5,0)))[5:-5, :]
+
+        inner_filter[0, :] += (f[0,:]-5*f[1,:]+10*f[2,:]-10*f[3,:]+5*f[4,:]-1*f[5,:])
+        
+        inner_filter[1, :] += (-5*f[0,:]+26*f[1,:]-55*f[2,:]+60*f[3,:]-35*f[4,:]+10*f[5,:]
+            -1*f[6,:])
+
+        inner_filter[2, :] += (10*f[0,:]-55*f[1,:]+126*f[2,:]-155*f[3,:]+110*f[4,:]-45*f[5,:]
+             +10*f[6,:]-1*f[7,:])
+
+        inner_filter[3, :] += (-10*f[0,:]+60*f[1,:]-155*f[2,:]+226*f[3,:]-205*f[4,:]+120*f[5,:]
+                -45*f[6,:]+10*f[7,:]-1*f[8,:])
+
+        inner_filter[4, :] += (5*f[0,:]-35*f[1,:]+110*f[2,:]-205*f[3,:]+251*f[4,:]-210*f[5,:]
+                +120*f[6,:]-45*f[7,:]+10*f[8,:]-1*f[9,:])
+
+        inner_filter[-1, :] += (f[-1,:]-5*f[-2,:]+10*f[-3,:]-10*f[-4,:]+5*f[-5,:]-1*f[-6,:])
+        
+        inner_filter[-2, :] += (-5*f[-1,:]+26*f[-2,:]-55*f[-3,:]+60*f[-4,:]-35*f[-5,:]+10*f[-6,:]
+            -1*f[-7,:])
+
+        inner_filter[-3, :] += (10*f[-1,:]-55*f[-2,:]+126*f[-3,:]-155*f[-4,:]+110*f[-5,:]-45*f[-6,:]
+             +10*f[-7,:]-1*f[-8,:])
+
+        inner_filter[-4, :] += (-10*f[-1,:]+60*f[-2,:]-155*f[-3,:]+226*f[-4,:]-205*f[-5,:]+120*f[-6,:]
+                -45*f[-7,:]+10*f[-8,:]-1*f[-9,:])
+
+        inner_filter[-5, :] += (5*f[-1,:]-35*f[-2,:]+110*f[-3,:]-205*f[-4,:]+251*f[-5,:]-210*f[-6,:]
+                +120*f[-7,:]-45*f[-8,:]+10*f[-9,:]-1*f[-10,:])
+        
+        f[...] = f[...] - filter_amplitude*inner_filter
+
+def non_reflecting_boundary_conditions(params, fields, dndy):
     
-    inner_filter[...] = (252*f[...] -210*(np.roll(f,-1,1)+np.roll(f,+1,1)) +
-            120*(np.roll(f,-2,1)+np.roll(f,+2,1)) +
-            -45*(np.roll(f,-3,1)+np.roll(f,+3,1)) +
-            10*(np.roll(f,-4,1)+np.roll(f,+4,1)) +
-            -1*(np.roll(f,-5,1)+np.roll(f,+5,1)))
+    rho = fields.rho
+    rho_u = fields.rho_u
+    rho_v = fields.rho_v
+    egy = fields.egy
+    tmp = fields.tmp
+    prs = fields.prs
+    rho_rhs = fields.rho_rhs
+    rho_u_rhs = fields.rho_u_rhs
+    rho_v_rhs = fields.rho_v_rhs
+    egy_rhs = fields.egy_rhs
 
-    inner_filter[5:-5, :] += (252*f[...]
-            -210*(np.roll(f,-1,0)+np.roll(f,+1,0)) + 
-            120*(np.roll(f,-2,0)+np.roll(f,+2,0)) +
-            -45*(np.roll(f,-3,0)+np.roll(f,+3,0)) +
-            10*(np.roll(f,-4,0)+np.roll(f,+4,0)) +
-            -1*(np.roll(f,-5,0)+np.roll(f,+5,0)))[5:-5, :]
-
-    inner_filter[0, :] += (f[0,:]-5*f[1,:]+10*f[2,:]-10*f[3,:]+5*f[4,:]-1*f[5,:])
-    
-    inner_filter[1, :] += (-5*f[0,:]+26*f[1,:]-55*f[2,:]+60*f[3,:]-35*f[4,:]+10*f[5,:]
-        -1*f[6,:])
-
-    inner_filter[2, :] += (10*f[0,:]-55*f[1,:]+126*f[2,:]-155*f[3,:]+110*f[4,:]-45*f[5,:]
-         +10*f[6,:]-1*f[7,:])
-
-    inner_filter[3, :] += (-10*f[0,:]+60*f[1,:]-155*f[2,:]+226*f[3,:]-205*f[4,:]+120*f[5,:]
-            -45*f[6,:]+10*f[7,:]-1*f[8,:])
-
-    inner_filter[4, :] += (5*f[0,:]-35*f[1,:]+110*f[2,:]-205*f[3,:]+251*f[4,:]-210*f[5,:]
-            +120*f[6,:]-45*f[7,:]+10*f[8,:]-1*f[9,:])
-
-    inner_filter[-1, :] += (f[-1,:]-5*f[-2,:]+10*f[-3,:]-10*f[-4,:]+5*f[-5,:]-1*f[-6,:])
-    
-    inner_filter[-2, :] += (-5*f[-1,:]+26*f[-2,:]-55*f[-3,:]+60*f[-4,:]-35*f[-5,:]+10*f[-6,:]
-        -1*f[-7,:])
-
-    inner_filter[-3, :] += (10*f[-1,:]-55*f[-2,:]+126*f[-3,:]-155*f[-4,:]+110*f[-5,:]-45*f[-6,:]
-         +10*f[-7,:]-1*f[-8,:])
-
-    inner_filter[-4, :] += (-10*f[-1,:]+60*f[-2,:]-155*f[-3,:]+226*f[-4,:]-205*f[-5,:]+120*f[-6,:]
-            -45*f[-7,:]+10*f[-8,:]-1*f[-9,:])
-
-    inner_filter[-5, :] += (5*f[-1,:]-35*f[-2,:]+110*f[-3,:]-205*f[-4,:]+251*f[-5,:]-210*f[-6,:]
-            +120*f[-7,:]-45*f[-8,:]+10*f[-9,:]-1*f[-10,:])
-    
-    f[...] = f[...] - filter_amplitude*inner_filter
-
-def non_reflecting_boundary_conditions(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
-        rho_v_rhs, egy_rhs, prs, tmp, dndy):
-    
     dx = params.dx
     dn = params.dn
     filter_amplitude = params.filter_amplitude
@@ -332,161 +384,77 @@ def dfdy(f, dy):
             out[-4,j] = -(3*(f[-5,j]-f[-3,j])/(4*dy) - 3*(f[-6,j]-f[-2,j])/(20*dy) + 1*(f[-7,j]-f[-1,j])/(60*dy))
     return out
 
-def rhs(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, prs, tmp, dndy):
+def rhs(params, fields, dndy):
 
-    eos(params, rho, rho_u, rho_v, egy, tmp, prs)
+    eos(params, fields)
 
-    rhs_euler_terms(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs,
-            prs, dndy)
+    rho = fields.rho
+    rho_u = fields.rho_u
+    rho_v = fields.rho_v
+    egy = fields.egy
+    tmp = fields.tmp
+    prs = fields.prs
+    rho_rhs = fields.rho_rhs
+    rho_u_rhs = fields.rho_u_rhs
+    rho_v_rhs = fields.rho_v_rhs
+    egy_rhs = fields.egy_rhs
 
-    rhs_viscous_terms(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs,
-            prs, tmp, dndy)
+    rhs_euler_terms(params, fields, dndy)
 
-    non_reflecting_boundary_conditions(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs,
-            rho_v_rhs, egy_rhs, prs, tmp, dndy)
+    rhs_viscous_terms(params, fields, dndy)
+
+    non_reflecting_boundary_conditions(params, fields, dndy)
 
 if __name__ == "__main__":
 
     from params import p
     from grid import asinh_grid
+    from fields import f
 
     x, y, dndy, d2ndy2 = asinh_grid(p.N, p.N, p.Lx, p.Ly, p.grid_beta)
 
     # initialize fields
-    dims = [p.N, p.N]
-
-    rho = np.zeros(dims, dtype=np.float64)
-    rho_u = np.zeros(dims, dtype=np.float64)
-    rho_v = np.zeros(dims, dtype=np.float64)
-    tmp = np.zeros(dims, dtype=np.float64)
-    prs = np.zeros(dims, dtype=np.float64)
-    egy = np.zeros(dims, dtype=np.float64)
-    rho_rhs = np.zeros(dims, dtype=np.float64)
-    rho_u_rhs = np.zeros(dims, dtype=np.float64)
-    rho_v_rhs = np.zeros(dims, dtype=np.float64)
-    egy_rhs = np.zeros(dims, dtype=np.float64)
-    stream = np.zeros(dims, dtype=np.float64)
-    vort = np.zeros(dims, dtype=np.float64)
-
     weight = np.tanh(np.sqrt(np.pi)*y/p.vorticity_thickness)
-    tmp[:, :] = p.T_inf2 + (weight+1)/2.*(p.T_inf1-p.T_inf2)
-    rho[:, :] = p.P_inf/(p.Rspecific*tmp[:, :])
-    rho_u[:, :] = rho*(p.U_inf2+(weight+1)/2.*(p.U_inf1-p.U_inf2))
-    rho_v[:, :] = 0.0
 
-    # read values of rho_u and rho_v since we don't know how
-    # to generate them yet
+    f.tmp[:, :] = p.T_inf2 + (weight+1)/2.*(p.T_inf1-p.T_inf2)
+    f.rho[:, :] = p.P_inf/(p.Rspecific*f.tmp[:, :])
+    
+    f.rho_u[:, :] = f.rho*(p.U_inf2+(weight+1)/2.*(p.U_inf1-p.U_inf2))
+    f.rho_v[:, :] = 0.0
 
-    u_pert, v_pert = add_forcing(p, stream, vort, x, y, dndy, d2ndy2)
+    u_pert, v_pert = add_forcing(p, f, x, y, dndy, d2ndy2)
 
-    rho_u += rho*u_pert
-    rho_v += rho*v_pert
+    f.rho_u += f.rho*u_pert
+    f.rho_v += f.rho*v_pert
 
-    egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*p.Cv*tmp
+    f.egy[:, :] = 0.5*(f.rho_u**2 + f.rho_v**2)/f.rho + f.rho*p.Cv*f.tmp
 
+    # make time stepper
+    stepper = RK4(p, f)
+    stepper.set_rhs_func(rhs, dndy)
+    stepper.set_filter_func(apply_inner_filter)
+    
+    # run simulation
     import timeit
 
-    rho_0 = rho.copy()
-    rho_u_0 = rho_u.copy()
-    rho_v_0 = rho_v.copy()
-    egy_0 = egy.copy()
-
     t1 = timeit.default_timer()
+
     for i in range(p.timesteps):
-
-        dt = calculate_timestep(p, x, y, rho, rho_u, rho_v, tmp)
-
-        print("Iteration: {}    Time: {}    Total energy: {}".format(i, dt*i, np.sum(egy)))
-
-        rho_0[...] = rho
-        rho_u_0[...] = rho_u
-        rho_v_0[...] = rho_v
-        egy_0[...] = egy
-
-        #-------------------------------------------------------------
-
-        rhs(p, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
-                egy_rhs, prs, tmp, dndy)
-
-        rho = rho_0 + (dt/2)*rho_rhs
-        rho_u = rho_u_0 + (dt/2)*rho_u_rhs
-        rho_v = rho_v_0 + (dt/2)*rho_v_rhs
-        egy = egy_0 + (dt/2)*egy_rhs
-
-        rho_next = (dt/6)*rho_rhs
-        rho_u_next = (dt/6)*rho_u_rhs
-        rho_v_next = (dt/6)*rho_v_rhs
-        egy_next = (dt/6)*egy_rhs
-
-        apply_inner_filter(p, rho)
-        apply_inner_filter(p, rho_u)
-        apply_inner_filter(p, rho_v)
-        apply_inner_filter(p, egy)
-
-        #-------------------------------------------------------------
-
-        rhs(p, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
-                egy_rhs, prs, tmp, dndy)
-
-        rho = rho_0 + (dt/2)*rho_rhs
-        rho_u = rho_u_0 + (dt/2)*rho_u_rhs
-        rho_v = rho_v_0 + (dt/2)*rho_v_rhs
-        egy = egy_0 + (dt/2)*egy_rhs
-
-        rho_next = rho_next +  (dt/3)*rho_rhs
-        rho_u_next = rho_u_next + (dt/3)*rho_u_rhs
-        rho_v_next = rho_v_next  + (dt/3)*rho_v_rhs
-        egy_next = egy_next  + (dt/3)*egy_rhs
-
-        apply_inner_filter(p, rho)
-        apply_inner_filter(p, rho_u)
-        apply_inner_filter(p, rho_v)
-        apply_inner_filter(p, egy)
-
-        #-------------------------------------------------------------
         
-        rhs(p, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
-                egy_rhs, prs, tmp, dndy)
+        dt = calculate_timestep(p, f, x, y)
 
-        rho = rho_0 + (dt)*rho_rhs
-        rho_u = rho_u_0 + (dt)*rho_u_rhs
-        rho_v = rho_v_0 + (dt)*rho_v_rhs
-        egy = egy_0 + (dt)*egy_rhs
+        print("Iteration: {}    Time: {}    Total energy: {}".format(i, dt*i, np.sum(f.egy)))
 
-        rho_next = rho_next +  (dt/3)*rho_rhs
-        rho_u_next = rho_u_next + (dt/3)*rho_u_rhs
-        rho_v_next = rho_v_next  + (dt/3)*rho_v_rhs
-        egy_next = egy_next  + (dt/3)*egy_rhs
-
-        apply_inner_filter(p, rho)
-        apply_inner_filter(p, rho_u)
-        apply_inner_filter(p, rho_v)
-        apply_inner_filter(p, egy)
-
-        #-------------------------------------------------------------
-
-        rhs(p, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
-                egy_rhs, prs, tmp, dndy)
-
-        rho = rho_0 + rho_next + (dt/6)*rho_rhs
-        rho_u = rho_u_0 + rho_u_next + (dt/6)*rho_u_rhs
-        rho_v = rho_v_0 + rho_v_next + (dt/6)*rho_v_rhs
-        egy = egy_0 + egy_next + (dt/6)*egy_rhs
-
-        apply_inner_filter(p, rho)
-        apply_inner_filter(p, rho_u)
-        apply_inner_filter(p, rho_v)
-        apply_inner_filter(p, egy)
-
-        #-------------------------------------------------------------
+        stepper.step(dt)
 
         if i%200 == 0:
-            f = h5py.File("{:05d}.hdf5".format(i))
-            f.create_group("fields")
-            f.create_dataset("fields/rho", data=rho)
-            f.create_dataset("fields/rho_u", data=rho_u)
-            f.create_dataset("fields/rho_v", data=rho_v)
-            f.create_dataset("fields/tmp", data=tmp)
+            outfile = h5py.File("{:05d}.hdf5".format(i))
+            outfile.create_group("fields")
+            outfile.create_dataset("fields/rho", data=f.rho)
+            outfile.create_dataset("fields/rho_u", data=f.rho_u)
+            outfile.create_dataset("fields/rho_v", data=f.rho_v)
+            outfile.create_dataset("fields/tmp", data=f.tmp)
+
     t2 = timeit.default_timer()
 
     print(t2-t1)
