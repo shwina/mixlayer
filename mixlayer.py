@@ -88,6 +88,9 @@ def eos(params, rho, rho_u, rho_v, egy, tmp, prs):
     prs[:, :] = rho*Rspecific*tmp
 
 def calculate_timestep(params, x, y, rho, rho_u, rho_v, tmp):
+
+    eos(params, rho, rho_u, rho_v, egy, tmp, prs)
+
     gamma_ref = params.gamma_ref
     mu_ref = params.mu_ref
     kappa_ref = params.kappa_ref
@@ -331,6 +334,8 @@ def dfdy(f, dy):
 
 def rhs(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, prs, tmp, dndy):
 
+    eos(params, rho, rho_u, rho_v, egy, tmp, prs)
+
     rhs_euler_terms(params, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs,
             prs, dndy)
 
@@ -389,8 +394,6 @@ if __name__ == "__main__":
     t1 = timeit.default_timer()
     for i in range(p.timesteps):
 
-        eos(p, rho, rho_u, rho_v, egy, tmp, prs)
-
         dt = calculate_timestep(p, x, y, rho, rho_u, rho_v, tmp)
 
         print("Iteration: {}    Time: {}    Total energy: {}".format(i, dt*i, np.sum(egy)))
@@ -420,8 +423,6 @@ if __name__ == "__main__":
         apply_inner_filter(p, rho_v)
         apply_inner_filter(p, egy)
 
-        eos(p, rho, rho_u, rho_v, egy, tmp, prs)
-
         #-------------------------------------------------------------
 
         rhs(p, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
@@ -441,8 +442,6 @@ if __name__ == "__main__":
         apply_inner_filter(p, rho_u)
         apply_inner_filter(p, rho_v)
         apply_inner_filter(p, egy)
-
-        eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 
         #-------------------------------------------------------------
         
@@ -464,8 +463,6 @@ if __name__ == "__main__":
         apply_inner_filter(p, rho_v)
         apply_inner_filter(p, egy)
 
-        eos(p, rho, rho_u, rho_v, egy, tmp, prs)
-
         #-------------------------------------------------------------
 
         rhs(p, rho, rho_u, rho_v, egy, rho_rhs, rho_u_rhs, rho_v_rhs,
@@ -480,8 +477,6 @@ if __name__ == "__main__":
         apply_inner_filter(p, rho_u)
         apply_inner_filter(p, rho_v)
         apply_inner_filter(p, egy)
-
-        eos(p, rho, rho_u, rho_v, egy, tmp, prs)
 
         #-------------------------------------------------------------
 
