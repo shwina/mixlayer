@@ -2,30 +2,71 @@
 class RK4:
 
     def __init__(self, params, fields):
+        """
+
+        Runge-Kutta time-stepping with filtering.
+
+        Parameters
+        ----------
+        params : attrdict.AttrDict
+            Dictionary containing simulation parameters
+
+        fields : attrdict.AttrDict
+            Dictionary containing simulation field vectors
+
+        """
         self.p = params
         self.f = fields
         self.allocate_arrays()
 
-    def allocate_arrays(self):
-        self.rho_0 = self.f.rho.copy()
-        self.rho_u_0 = self.f.rho_u.copy()
-        self.rho_v_0 = self.f.rho_v.copy()
-        self.egy_0 = self.f.egy.copy()
-
-        self.rho_next = self.f.rho.copy()
-        self.rho_u_next = self.f.rho_u.copy()
-        self.rho_v_next = self.f.rho_v.copy()
-        self.egy_next = self.f.egy.copy()
-
     def set_rhs_func(self, rhs_func, *rhs_func_args):
+        """
+
+        Set function for computing the right-hand sides of the equations.
+
+        Parameters
+        ----------
+        rhs_func : function
+            Function that computes right-hand sides. Takes
+            `params` and `fields` as its first two arguments.
+
+        *rhs_func_args (optional)
+            Any additional arguments to `rhs_func`.
+
+        """
         self.rhs_func = rhs_func
         self.rhs_func_args = rhs_func_args
 
     def set_filter_func(self, filter_func, *filter_func_args):
+        """
+
+        Set function for filtering the fields at each sub-step
+
+        Parameters
+        ----------
+        filter_func : function
+            Function that applies the filter to the fields. Takes
+            `params` and `fields` as its first two arguments.
+
+        *filter_func_args (optional)
+             Any additional arguments to `filter_func`.
+
+        """
+
         self.filter_func = filter_func
         self.filter_func_args = filter_func_args
 
     def step(self, dt):
+        """
+
+        Take a time-step of "dt" and update fields.
+
+        Parameters
+        ----------
+
+        dt : float
+            Time step length
+        """
 
         self.rho_0[...] = self.f.rho
         self.rho_u_0[...] = self.f.rho_u
@@ -61,3 +102,18 @@ class RK4:
         self.f.egy = self.egy_0 + self.egy_next + h*self.f.egy_rhs
 
         self.filter_func(self.p, self.f, *self.filter_func_args)
+
+    def _allocate_arrays(self):
+        """
+        Allocate extra storage.
+        """
+        self.rho_0 = self.f.rho.copy()
+        self.rho_u_0 = self.f.rho_u.copy()
+        self.rho_v_0 = self.f.rho_v.copy()
+        self.egy_0 = self.f.egy.copy()
+
+        self.rho_next = self.f.rho.copy()
+        self.rho_u_next = self.f.rho_u.copy()
+        self.rho_v_next = self.f.rho_v.copy()
+        self.egy_next = self.f.egy.copy()
+
