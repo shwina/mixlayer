@@ -65,7 +65,6 @@ def add_forcing(params, fields, x, y, dndy, d2ndy2):
     for i in range(50000):
         err = jacobi_step(stream, dx, dn, -vort, dndy, d2ndy2)
         if err <= 1e-5:
-            print("Jacobi steps: {}".format(i))
             break
 
     u_pert = (stream[2:,1:-1] - stream[0:-2,1:-1])*dndy/(2*dn)
@@ -438,8 +437,6 @@ def main():
     # run simulation
     import timeit
 
-    t1 = timeit.default_timer()
-
     for i in range(p.timesteps):
         
         dt = calculate_timestep(p, f, x, y)
@@ -447,18 +444,15 @@ def main():
         print("Iteration: {}    Time: {}    Total energy: {}".format(i, dt*i, np.sum(f.egy)))
 
         stepper.step(dt)
-
-        if i%200 == 0:
-            outfile = h5py.File("{:05d}.hdf5".format(i))
-            outfile.create_group("fields")
-            outfile.create_dataset("fields/rho", data=f.rho)
-            outfile.create_dataset("fields/rho_u", data=f.rho_u)
-            outfile.create_dataset("fields/rho_v", data=f.rho_v)
-            outfile.create_dataset("fields/tmp", data=f.tmp)
-
-    t2 = timeit.default_timer()
-
-    print(t2-t1)
+    
+        if p.writer:
+            if i%200 == 0:
+                outfile = h5py.File("{:05d}.hdf5".format(i))
+                outfile.create_group("fields")
+                outfile.create_dataset("fields/rho", data=f.rho)
+                outfile.create_dataset("fields/rho_u", data=f.rho_u)
+                outfile.create_dataset("fields/rho_v", data=f.rho_v)
+                outfile.create_dataset("fields/tmp", data=f.tmp)
 
 if __name__ == "__main__":
     main()

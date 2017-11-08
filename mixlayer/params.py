@@ -20,6 +20,7 @@ class Params(object):
         self.Pr = p.Pr 
         self.nperiod = p.nperiod 
         self.timesteps = p.timesteps 
+        self.writer = p.writer
 
         # constants
         self.Rgas = p.Rgas 
