@@ -17,7 +17,7 @@ class RK4:
         """
         self.p = params
         self.f = fields
-        self.allocate_arrays()
+        self._allocate_arrays()
 
     def set_rhs_func(self, rhs_func, *rhs_func_args):
         """
