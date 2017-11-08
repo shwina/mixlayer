@@ -1,4 +1,3 @@
-
 class RK4:
 
     def __init__(self, params, fields):

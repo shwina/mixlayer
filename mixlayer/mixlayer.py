@@ -2,6 +2,8 @@ import numpy as np
 from numba import jit, float64, prange
 import h5py
 
+import sys
+
 @jit(nopython=True, nogil=True)
 def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
     f_old = f.copy()
@@ -399,12 +401,17 @@ def rhs(params, fields, dndy):
 
     non_reflecting_boundary_conditions(params, fields, dndy)
 
-if __name__ == "__main__":
-    from params import p
-    from fields import f
-    from grid import asinh_grid
-    from timestepping import RK4
+def main():
+    from .params import Params
+    from .fields import Fields
+    from .grid import asinh_grid
+    from .timestepping import RK4
+    
+    paramfile = sys.argv[1]
+    p = Params(paramfile)
+    f = Fields(p)
 
+    # make grid
     x, y, dndy, d2ndy2 = asinh_grid(p.N, p.N, p.Lx, p.Ly, p.grid_beta)
 
     # initialize fields
@@ -452,3 +459,6 @@ if __name__ == "__main__":
     t2 = timeit.default_timer()
 
     print(t2-t1)
+
+if __name__ == "__main__":
+    main()

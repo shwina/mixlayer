@@ -1,0 +1,37 @@
+
+# grid parameters
+N: 144
+Lx: 1
+
+# simulation control
+Ma: 0.35
+Re: 400
+Pr: 0.697
+nperiod: 8 # number of perturbation wavelengths        
+timesteps: 10000
+
+# constants
+Rgas: 8314.0
+Cp: 1005.0
+Cv: 718
+
+# initial conditions
+P_inf: 101325.
+T_inf1: 300.
+T_inf2: 300.
+
+# forcing
+Famp_2d: 0.4
+
+# air (2) and reactant (1) properties
+molwt: 28.97
+
+# clustering parameters
+grid_beta:  5.0
+
+# time-stepping criteria
+cfl_vel: 0.5
+cfl_visc: 0.1
+
+# filtering
+filter_amplitude: 0.0009765625

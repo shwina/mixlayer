@@ -1,20 +1,17 @@
-import yaml
-from attrdict import AttrDict
 import numpy as np
 
-from params import p
-dims = [p.N, p.N]
-
-f = AttrDict({})
-f.rho = np.zeros(dims, dtype=np.float64)
-f.rho_u = np.zeros(dims, dtype=np.float64)
-f.rho_v = np.zeros(dims, dtype=np.float64)
-f.tmp = np.zeros(dims, dtype=np.float64)
-f.prs = np.zeros(dims, dtype=np.float64)
-f.egy = np.zeros(dims, dtype=np.float64)
-f.rho_rhs = np.zeros(dims, dtype=np.float64)
-f.rho_u_rhs = np.zeros(dims, dtype=np.float64)
-f.rho_v_rhs = np.zeros(dims, dtype=np.float64)
-f.egy_rhs = np.zeros(dims, dtype=np.float64)
-f.stream = np.zeros(dims, dtype=np.float64)
-f.vort = np.zeros(dims, dtype=np.float64)
+class Fields(object):
+    def __init__(self, p):
+        dims = [p.N, p.N]
+        self.rho = np.zeros(dims, dtype=np.float64)
+        self.rho_u = np.zeros(dims, dtype=np.float64)
+        self.rho_v = np.zeros(dims, dtype=np.float64)
+        self.tmp = np.zeros(dims, dtype=np.float64)
+        self.prs = np.zeros(dims, dtype=np.float64)
+        self.egy = np.zeros(dims, dtype=np.float64)
+        self.rho_rhs = np.zeros(dims, dtype=np.float64)
+        self.rho_u_rhs = np.zeros(dims, dtype=np.float64)
+        self.rho_v_rhs = np.zeros(dims, dtype=np.float64)
+        self.egy_rhs = np.zeros(dims, dtype=np.float64)
+        self.stream = np.zeros(dims, dtype=np.float64)
+        self.vort = np.zeros(dims, dtype=np.float64)

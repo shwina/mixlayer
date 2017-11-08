@@ -3,3 +3,4 @@
 *.png
 *.log
 *.hdf5
+*egg-info
