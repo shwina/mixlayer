@@ -441,7 +441,7 @@ def main():
         
         dt = calculate_timestep(p, f, x, y)
 
-        print("Iteration: {}    Time: {}    Total energy: {}".format(i, dt*i, np.sum(f.egy)))
+        print("Iteration: {:10d}    Time: {:15.10e}    Total energy: {:15.10e}".format(i, dt*i, np.sum(f.egy)))
 
         stepper.step(dt)
     
