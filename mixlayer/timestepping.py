@@ -89,7 +89,7 @@ class RK4:
             self.rho_v_next = k*self.f.rho_v_rhs
             self.egy_next = k*self.f.egy_rhs
 
-            self.filter_func(self.p, self.f, *self.filter_func_args)
+            #self.filter_func(self.p, self.f, *self.filter_func_args)
 
         h = (dt/6)
 

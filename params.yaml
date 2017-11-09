@@ -9,6 +9,7 @@ Re: 400
 Pr: 0.697
 nperiod: 8 # number of perturbation wavelengths        
 timesteps: 10000
+writer: true
 
 # constants
 Rgas: 8314.0

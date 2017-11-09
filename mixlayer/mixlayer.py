@@ -219,9 +219,9 @@ def apply_boundary_filter(params, f):
                 - f[-6, :])*params.filter_amplitude
     
 def apply_inner_filter(params, fields):
+    filter_amplitude = params.filter_amplitude
 
     for f in fields.rho, fields.rho_u, fields.rho_v, fields.egy:
-        filter_amplitude = params.filter_amplitude/10
 
         ny, nx = f.shape
         inner_filter = np.empty_like(f, dtype=np.float64)
