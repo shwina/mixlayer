@@ -8,6 +8,7 @@ from .params import Params
 from .fields import Fields
 from .grid import asinh_grid
 from .timestepping import RK4
+from .filtering import filter5
 
 @jit(nopython=True, nogil=True)
 def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
@@ -209,65 +210,9 @@ def rhs_viscous_terms(params, fields, dndy):
     rho_v_rhs += (dfdx(tau_12, dx) + dfdy(tau_22,dn)*dndy)
     egy_rhs += (dfdx(rho_u/rho*tau_11, dx) + dfdx(rho_v/rho*tau_12, dx) + dfdy(rho_u/rho*tau_12, dn)*dndy + dfdy(rho_v/rho*tau_22, dn)*dndy) + kappa*(dfdx(dfdx(tmp, dx), dx) + dfdy(dfdy(tmp, dn)*dndy, dn)*dndy)
 
-def apply_boundary_filter(params, f):
-    f[0, :] = f[0, :] - (f[0, :] - 5*f[1, :]
-                + 10*f[2, :] - 10*f[3, :] + 5*f[4, :]
-                - f[5, :])*params.filter_amplitude
-
-    f[-1, :] = f[-1, :] - (f[-1, :] - 5*f[-2, :]
-                + 10*f[-3, :] - 10*f[-4, :] + 5*f[-5, :]
-                - f[-6, :])*params.filter_amplitude
-    
-def apply_inner_filter(params, fields):
-    filter_amplitude = params.filter_amplitude
-
+def apply_filter(params, fields):
     for f in fields.rho, fields.rho_u, fields.rho_v, fields.egy:
-
-        ny, nx = f.shape
-        inner_filter = np.empty_like(f, dtype=np.float64)
-        
-        inner_filter[...] = (252*f[...] -210*(np.roll(f,-1,1)+np.roll(f,+1,1)) +
-                120*(np.roll(f,-2,1)+np.roll(f,+2,1)) +
-                -45*(np.roll(f,-3,1)+np.roll(f,+3,1)) +
-                10*(np.roll(f,-4,1)+np.roll(f,+4,1)) +
-                -1*(np.roll(f,-5,1)+np.roll(f,+5,1)))
-
-        inner_filter[5:-5, :] += (252*f[...]
-                -210*(np.roll(f,-1,0)+np.roll(f,+1,0)) + 
-                120*(np.roll(f,-2,0)+np.roll(f,+2,0)) +
-                -45*(np.roll(f,-3,0)+np.roll(f,+3,0)) +
-                10*(np.roll(f,-4,0)+np.roll(f,+4,0)) +
-                -1*(np.roll(f,-5,0)+np.roll(f,+5,0)))[5:-5, :]
-
-        inner_filter[0, :] += (f[0,:]-5*f[1,:]+10*f[2,:]-10*f[3,:]+5*f[4,:]-1*f[5,:])
-        
-        inner_filter[1, :] += (-5*f[0,:]+26*f[1,:]-55*f[2,:]+60*f[3,:]-35*f[4,:]+10*f[5,:]
-            -1*f[6,:])
-
-        inner_filter[2, :] += (10*f[0,:]-55*f[1,:]+126*f[2,:]-155*f[3,:]+110*f[4,:]-45*f[5,:]
-             +10*f[6,:]-1*f[7,:])
-
-        inner_filter[3, :] += (-10*f[0,:]+60*f[1,:]-155*f[2,:]+226*f[3,:]-205*f[4,:]+120*f[5,:]
-                -45*f[6,:]+10*f[7,:]-1*f[8,:])
-
-        inner_filter[4, :] += (5*f[0,:]-35*f[1,:]+110*f[2,:]-205*f[3,:]+251*f[4,:]-210*f[5,:]
-                +120*f[6,:]-45*f[7,:]+10*f[8,:]-1*f[9,:])
-
-        inner_filter[-1, :] += (f[-1,:]-5*f[-2,:]+10*f[-3,:]-10*f[-4,:]+5*f[-5,:]-1*f[-6,:])
-        
-        inner_filter[-2, :] += (-5*f[-1,:]+26*f[-2,:]-55*f[-3,:]+60*f[-4,:]-35*f[-5,:]+10*f[-6,:]
-            -1*f[-7,:])
-
-        inner_filter[-3, :] += (10*f[-1,:]-55*f[-2,:]+126*f[-3,:]-155*f[-4,:]+110*f[-5,:]-45*f[-6,:]
-             +10*f[-7,:]-1*f[-8,:])
-
-        inner_filter[-4, :] += (-10*f[-1,:]+60*f[-2,:]-155*f[-3,:]+226*f[-4,:]-205*f[-5,:]+120*f[-6,:]
-                -45*f[-7,:]+10*f[-8,:]-1*f[-9,:])
-
-        inner_filter[-5, :] += (5*f[-1,:]-35*f[-2,:]+110*f[-3,:]-205*f[-4,:]+251*f[-5,:]-210*f[-6,:]
-                +120*f[-7,:]-45*f[-8,:]+10*f[-9,:]-1*f[-10,:])
-        
-        f[...] = f[...] - filter_amplitude*inner_filter
+        filter5(f)
 
 def non_reflecting_boundary_conditions(params, fields, dndy):
     
@@ -295,9 +240,6 @@ def non_reflecting_boundary_conditions(params, fields, dndy):
     drhody = dfdy(rho, dn)*dndy
     dudy = dfdy(rho_u/rho, dn)*dndy
     dvdy = dfdy(rho_v/rho, dn)*dndy
-
-    for dxdy in dpdy, drhody, dudy, dvdy:
-        apply_boundary_filter(params, dxdy)
     
     L_1 = (rho_v/rho - C_sound) * (dpdy - rho*C_sound*dvdy)
     L_2 = rho_v/rho* (C_sound**2 * drhody - dpdy)
@@ -334,11 +276,6 @@ def non_reflecting_boundary_conditions(params, fields, dndy):
         0.5*np.sqrt((rho_u/rho)**2 + (rho_v/rho)**2)*d_1 -
         d_2*(prs + egy)/(rho*C_sound**2) -
         rho*(rho_v/rho*d_4+rho_u/rho*d_3))[-1, :]
-
-    # apply rhs filter
-    for rhs in rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs:
-        apply_boundary_filter(params, rhs)
-
 
 def rhs(params, fields, dndy):
 
@@ -388,7 +325,7 @@ def main():
     # make time stepper
     stepper = RK4(p, f)
     stepper.set_rhs_func(rhs, dndy)
-    stepper.set_filter_func(apply_inner_filter)
+    stepper.set_filter_func(apply_filter)
     
     # run simulation
     import timeit
