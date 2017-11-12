@@ -35,7 +35,7 @@ def filter5(f, alpha=1./(2**10)):
 
     inner_filter[5:-5, :] += (252*f[...]
             -210*(np.roll(f,-1,0)+np.roll(f,+1,0)) + 
-            120*(np.roll(f,-2,0)+np.roll(f,+2,0)) +(
+            120*(np.roll(f,-2,0)+np.roll(f,+2,0)) +
             -45*(np.roll(f,-3,0)+np.roll(f,+3,0)) +
             10*(np.roll(f,-4,0)+np.roll(f,+4,0)) +
             -1*(np.roll(f,-5,0)+np.roll(f,+5,0)))[5:-5, :]
