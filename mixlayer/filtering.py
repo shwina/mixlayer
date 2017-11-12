@@ -4,7 +4,7 @@ def filter5(f, alpha=1./(2**10)):
     """
     Apply 5th order filter to given 2-d array f,
     
-        f = f - alpha*D
+        f = f + alpha*D
         
     where alpha is the filter amplitude and D
     is the filter.
@@ -20,7 +20,7 @@ def filter5(f, alpha=1./(2**10)):
     -----
     
     A default amplitude (alpha) of 1/2**10 is used
-    for a 5th order filter (1/2**n) is the recommended
+    for a 5th order filter (1-)^(n+1).(2**-2n) is the recommended
     amplitude (Kennedy & Carpenter 1997).
     """
 
