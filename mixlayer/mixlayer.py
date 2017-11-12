@@ -9,6 +9,7 @@ from .fields import Fields
 from .grid import asinh_grid
 from .timestepping import RK4
 from .filtering import filter5
+from .eos import IdealGasEOS
 
 @jit(nopython=True, nogil=True)
 def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
@@ -87,25 +88,10 @@ def add_forcing(params, fields, x, y, dndy, d2ndy2):
 
     return u_pert, v_pert
 
-def eos(params, fields):
+def calculate_timestep(params, fields, eos, x, y):
 
-    rho = fields.rho
-    rho_u = fields.rho_u
-    rho_v = fields.rho_v
-    egy = fields.egy
-    tmp = fields.tmp
-    prs = fields.prs
+    eos.update_pressure()
 
-    Rspecific = params.Rspecific
-    Cv = params.Cv
-
-    tmp[:, :] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho)/(rho*Cv)
-    prs[:, :] = rho*Rspecific*tmp
-
-def calculate_timestep(params, fields, x, y):
-
-    eos(params, fields)
- 
     rho = fields.rho
     rho_u = fields.rho_u
     rho_v = fields.rho_v
@@ -277,9 +263,9 @@ def non_reflecting_boundary_conditions(params, fields, dndy):
         d_2*(prs + egy)/(rho*C_sound**2) -
         rho*(rho_v/rho*d_4+rho_u/rho*d_3))[-1, :]
 
-def rhs(params, fields, dndy):
+def rhs(params, fields, eos, dndy):
 
-    eos(params, fields)
+    eos.update_pressure()
 
     rho = fields.rho
     rho_u = fields.rho_u
@@ -322,9 +308,11 @@ def main():
 
     f.egy[:, :] = 0.5*(f.rho_u**2 + f.rho_v**2)/f.rho + f.rho*p.Cv*f.tmp
 
+    eos = IdealGasEOS(p, f)
+
     # make time stepper
     stepper = RK4(p, f)
-    stepper.set_rhs_func(rhs, dndy)
+    stepper.set_rhs_func(rhs, eos, dndy)
     stepper.set_filter_func(apply_filter)
     
     # run simulation
@@ -332,7 +320,7 @@ def main():
 
     for i in range(p.timesteps):
         
-        dt = calculate_timestep(p, f, x, y)
+        dt = calculate_timestep(p, f, eos, x, y)
 
         print("Iteration: {:10d}    Time: {:15.10e}    Total energy: {:15.10e}".format(i, dt*i, np.sum(f.egy)))
 
