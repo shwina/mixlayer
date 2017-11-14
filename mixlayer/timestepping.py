@@ -1,40 +1,29 @@
+import numpy as np
+
 class RK4:
 
-    def __init__(self, params, fields):
+    def __init__(self, fields, rhs_func, *rhs_func_extra_args):
         """
 
-        Runge-Kutta time-stepping with filtering.
+        Runge-Kutta time-stepper.
 
         Parameters
         ----------
-        params : attrdict.AttrDict
-            Dictionary containing simulation parameters
+        fields : list or tuple
+            List or tuple of field vectors that will be advanced
+            in a time step.
 
-        fields : attrdict.AttrDict
-            Dictionary containing simulation field vectors
-
-        """
-        self.p = params
-        self.f = fields
-        self._allocate_arrays()
-
-    def set_rhs_func(self, rhs_func, *rhs_func_args):
-        """
-
-        Set function for computing the right-hand sides of the equations.
-
-        Parameters
-        ----------
         rhs_func : function
-            Function that computes right-hand sides. Takes
-            `params` and `fields` as its first two arguments.
-
-        *rhs_func_args (optional)
-            Any additional arguments to `rhs_func`.
-
+            Function that computes the right-hand sides for all equations.
+            `fields` is assumed to be the first argument to the function.
+        
+        rhs_func_extra_args : *tuple
+            Any additional arguments to be passed to `rhs_func`.
         """
+        self.fields = fields
         self.rhs_func = rhs_func
-        self.rhs_func_args = rhs_func_args
+        self.rhs_func_extra_args = rhs_func_extra_args
+        self._allocate_arrays()
 
     def step(self, dt):
         """
@@ -47,49 +36,32 @@ class RK4:
         dt : float
             Time step length
         """
-
-        self.rho_0[...] = self.f.rho
-        self.rho_u_0[...] = self.f.rho_u
-        self.rho_v_0[...] = self.f.rho_v
-        self.egy_0[...] = self.f.egy
+        
+        for f, f0 in zip(self.fields, self.fields_0):
+            f0[...] = f
 
         ki = [dt/6, dt/3, dt/3]
         hi = [dt/2, dt/2, dt]
-    
+
         for h, k in zip(hi, ki):
-
-            self.rhs_func(self.p, self.f, *self.rhs_func_args)
-
-            self.f.rho = self.rho_0 + h*self.f.rho_rhs
-            self.f.rho_u = self.rho_u_0 + h*self.f.rho_u_rhs
-            self.f.rho_v = self.rho_v_0 + h*self.f.rho_v_rhs
-            self.f.egy = self.egy_0 + h*self.f.egy_rhs
-
-            self.rho_1 = k*self.f.rho_rhs
-            self.rho_u_1 = k*self.f.rho_u_rhs
-            self.rho_v_1 = k*self.f.rho_v_rhs
-            self.egy_1 = k*self.f.egy_rhs
+            rhss = self.rhs_func(self.fields, *self.rhs_func_extra_args)
+            for f, f0, f1, rhs in zip(self.fields, self.fields_0, self.fields_1, rhss):
+                f[...] = f0 + h*rhs
+                f1[...] = k*rhs
 
         h = (dt/6)
 
-        self.rhs_func(self.p, self.f, *self.rhs_func_args)
-
-        self.f.rho = self.rho_0 + self.rho_1 + h*self.f.rho_rhs
-        self.f.rho_u = self.rho_u_0 + self.rho_u_1 + h*self.f.rho_u_rhs
-        self.f.rho_v = self.rho_v_0 + self.rho_v_1 + h*self.f.rho_v_rhs
-        self.f.egy = self.egy_0 + self.egy_1 + h*self.f.egy_rhs
+        rhss = self.rhs_func(self.fields, *self.rhs_func_extra_args)
+        for f, f0, f1, rhs in zip(self.fields, self.fields_0, self.fields_1, rhss):
+            f[...] = f0 + f1 + h*rhs
 
     def _allocate_arrays(self):
         """
         Allocate extra storage.
         """
-        self.rho_0 = self.f.rho.copy()
-        self.rho_u_0 = self.f.rho_u.copy()
-        self.rho_v_0 = self.f.rho_v.copy()
-        self.egy_0 = self.f.egy.copy()
-
-        self.rho_1 = self.f.rho.copy()
-        self.rho_u_1 = self.f.rho_u.copy()
-        self.rho_v_1 = self.f.rho_v.copy()
-        self.egy_1 = self.f.egy.copy()
+        self.fields_0 = []
+        self.fields_1 = []
+        for field in self.fields:
+            self.fields_0.append(np.copy(field))
+            self.fields_1.append(np.copy(field))
 

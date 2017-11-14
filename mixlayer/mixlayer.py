@@ -263,7 +263,7 @@ def non_reflecting_boundary_conditions(params, fields, dndy):
         d_2*(prs + egy)/(rho*C_sound**2) -
         rho*(rho_v/rho*d_4+rho_u/rho*d_3))[-1, :]
 
-def rhs(params, fields, eos, dndy):
+def rhs(eqvars, params, fields, eos, dndy):
 
     eos.update_pressure()
 
@@ -283,6 +283,8 @@ def rhs(params, fields, eos, dndy):
     rhs_viscous_terms(params, fields, dndy)
 
     non_reflecting_boundary_conditions(params, fields, dndy)
+
+    return fields.rho_rhs, fields.rho_u_rhs, fields.rho_v_rhs, fields.egy_rhs
 
 def main():
     paramfile = sys.argv[1]
@@ -311,8 +313,8 @@ def main():
     eos = IdealGasEOS(p, f)
 
     # make time stepper
-    stepper = RK4(p, f)
-    stepper.set_rhs_func(rhs, eos, dndy)
+    stepper = RK4([f.rho, f.rho_u, f.rho_v, f.egy],
+            rhs, p, f, eos, dndy)
     
     # run simulation
     import timeit
