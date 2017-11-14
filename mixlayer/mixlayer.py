@@ -313,7 +313,6 @@ def main():
     # make time stepper
     stepper = RK4(p, f)
     stepper.set_rhs_func(rhs, eos, dndy)
-    stepper.set_filter_func(apply_filter)
     
     # run simulation
     import timeit
@@ -325,6 +324,7 @@ def main():
         print("Iteration: {:10d}    Time: {:15.10e}    Total energy: {:15.10e}".format(i, dt*i, np.sum(f.egy)))
 
         stepper.step(dt)
+        apply_filter(p, f)
     
         if p.writer:
             if i%200 == 0:
