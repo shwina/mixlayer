@@ -9,8 +9,8 @@ class RK4:
 
         Parameters
         ----------
-        fields : list or tuple
-            List or tuple of field vectors that will be advanced
+        fields : tuple
+            ndarrays representing the field vectors that will be advanced
             in a time step.
 
         rhs_func : function
