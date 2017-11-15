@@ -23,8 +23,3 @@ class TestRK4:
     def test_take_one_step_and_compare_fields(self):
         self.stepper.step(0.5)
         assert_allclose(self.fields[0], self.fields[1])
-
-    def test_
-
-    
-        
