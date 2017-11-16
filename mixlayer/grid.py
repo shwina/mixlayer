@@ -5,7 +5,24 @@ class SinhGrid(object):
 
     def __init__(self, nx, ny, Lx, Ly, beta, bx, by):
         """
-        
+        Creates a grid "stretched" in the y-direction with stretching function 'sinh(y)'.
+
+        Parameters
+        ----------
+        nx : int
+            Number of grid points in the x-direction
+        ny : int
+            Number of grid points in the y-direction
+        Lx : float
+            Grid length in x-direction
+        Ly : float
+            Grid length in y-direction
+        beta : stretching parameter
+            Extent of stretching (very small beta implies no stretching, more beta implies more stretching)
+        bx, by : mixlayer.derivatives.BoundaryType
+            Specify the way boundaries are treated in the x and y-directions.
+                BoundaryType.INNER : inner stencils used on the boundary)
+                BoundaryType.PERIODIC : domain wraps around itself in this direction).
         """
         dx = Lx/(nx-1)
         dn = 1./(ny-1)
