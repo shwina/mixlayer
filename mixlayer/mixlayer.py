@@ -121,7 +121,7 @@ def calculate_timestep(params, fields, eos, x, y):
 
     # dx, dy
     N = np.shape(x)[0]
-    dx = 1./N
+    dx = 1./(N-1)
     dy = x.copy()
     dy[:-1, :] = y[1:, :] - y[:-1, :]
     dy[-1, :] = y[-1, :] - y[-2, :]
