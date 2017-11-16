@@ -96,7 +96,12 @@ def add_forcing(params, fields, grid):
 
 def calculate_timestep(params, fields, eos, x, y):
 
-    eos.update_pressure()
+    fields.tmp[...] = (
+            fields.egy -
+            0.5*(fields.rho_u**2 + fields.rho_v**2)/fields.rho
+        ) / (fields.rho*eos.Cv)
+
+    eos.pressure(fields.tmp, fields.rho, fields.prs)
 
     rho = fields.rho
     rho_u = fields.rho_u
@@ -271,7 +276,12 @@ def non_reflecting_boundary_conditions(params, fields, grid):
 
 def rhs(eqvars, params, fields, eos, grid):
 
-    eos.update_pressure()
+    fields.tmp[...] = (
+            fields.egy -
+            0.5*(fields.rho_u**2 + fields.rho_v**2)/fields.rho
+        ) / (fields.rho*eos.Cv)
+
+    eos.pressure(fields.tmp, fields.rho, fields.prs)
 
     rho = fields.rho
     rho_u = fields.rho_u
@@ -316,7 +326,7 @@ def main():
 
     f.egy[:, :] = 0.5*(f.rho_u**2 + f.rho_v**2)/f.rho + f.rho*p.Cv*f.tmp
 
-    eos = IdealGasEOS(p, f)
+    eos = IdealGasEOS()
 
     # make time stepper
     stepper = RK4([f.rho, f.rho_u, f.rho_v, f.egy],

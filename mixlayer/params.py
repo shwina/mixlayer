@@ -54,10 +54,7 @@ class Params(object):
         self.T_ref = max([self.T_inf2, 344.6])
 
         # eos parameters
-        self.Rspecific = self.Rgas/self.molwt
-        self.Cp = self.Pr*(3.227e-3 + 8.3894e-5*self.T_ref - 1.958e-8*self.T_ref**2)/(
-                6.109e-6 + 4.604e-8*self.T_ref - 1.051e-11*self.T_ref**2)
-        self.Cv = self.Cp - self.Rspecific
+        self.Rspecific = 287
 
         # reference density
         self.rho_ref1 = self.P_inf/(self.Rspecific*self.T_inf1)

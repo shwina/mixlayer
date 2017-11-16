@@ -2,14 +2,10 @@ import numpy as np
 
 class IdealGasEOS(object):
 
-    def __init__(self, params, fields):
-        self.fields = fields
-        self.params = params
+    def __init__(self):
+        self.Cp = 1005.0
+        self.Cv = 718.0
+        self.R = 287.0
 
-    def update_pressure(self):
-        self.fields.tmp[:, :] = (
-                self.fields.egy -
-                0.5*(self.fields.rho_u**2 + self.fields.rho_v**2)/
-                     self.fields.rho
-                )/(self.fields.rho*self.params.Cv)
-        self.fields.prs[:, :] = self.fields.rho*self.params.Rspecific*self.fields.tmp
+    def pressure(self, temperature, density, out):
+        out[...] = density*self.R*temperature
