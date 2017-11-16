@@ -94,7 +94,7 @@ def add_forcing(params, fields, grid):
 
     return u_pert, v_pert
 
-def calculate_timestep(params, fields, eos, x, y):
+def calculate_timestep(params, fields, eos, grid):
 
     fields.tmp[...] = (
             fields.egy -
@@ -120,11 +120,8 @@ def calculate_timestep(params, fields, eos, x, y):
     cfl_visc = params.cfl_visc
 
     # dx, dy
-    N = np.shape(x)[0]
-    dx = 1./(N-1)
-    dy = x.copy()
-    dy[:-1, :] = y[1:, :] - y[:-1, :]
-    dy[-1, :] = y[-1, :] - y[-2, :]
+    dx = grid.dx
+    dy = grid.dy
 
     dxmin = np.minimum(dx, dy)
 
@@ -337,7 +334,7 @@ def main():
 
     for i in range(p.timesteps):
         
-        dt = calculate_timestep(p, f, eos, g.x, g.y)
+        dt = calculate_timestep(p, f, eos, g)
 
         print("Iteration: {:10d}    Time: {:15.10e}    Total energy: {:15.10e}".format(i, dt*i, np.sum(f.egy)))
 
