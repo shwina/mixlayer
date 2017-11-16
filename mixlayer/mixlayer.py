@@ -3,10 +3,10 @@ import h5py
 import sys
 from numba import jit, float64, prange
 
-from .derivatives import dfdx, dfdy
+from .derivatives import dfdx, dfdy, BoundaryType
 from .params import Params
 from .fields import Fields
-from .grid import asinh_grid
+from .grid import AsinhGrid
 from .timestepping import RK4
 from .filtering import filter5
 from .eos import IdealGasEOS
@@ -32,11 +32,17 @@ def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
             f[i,j] = f[i,j] + 1.6*(fnew - f[i,j])
     return np.linalg.norm(f-f_old)
 
-def add_forcing(params, fields, x, y, dndy, d2ndy2):
+def add_forcing(params, fields, grid):
     N = params.N
     dn = params.dn
     stream = fields.stream
     vort = fields.vort
+
+    dn = grid.dn
+    dndy = grid.dndy
+    d2ndy2 = grid.d2ndy2
+    x = grid.x
+    y = grid.y
 
     U_ref = params.U_ref
     Famp_2d = params.Famp_2d
@@ -132,7 +138,7 @@ def calculate_timestep(params, fields, eos, x, y):
     dt = np.min(np.minimum(np.minimum(test_1, test_2), test_3))
     return dt
 
-def rhs_euler_terms(params, fields, dndy):
+def rhs_euler_terms(params, fields, grid):
  
     rho = fields.rho
     rho_u = fields.rho_u
@@ -148,25 +154,25 @@ def rhs_euler_terms(params, fields, dndy):
     dx = params.dx
     dn = params.dn
 
-    rho_rhs[...] = -dfdy(rho_v, dn)*dndy
+    rho_rhs[...] = -grid.dfdy(rho_v)
     rho_rhs[[0,-1], :] = 0
-    rho_rhs[...] += -dfdx(rho_u, dx)
+    rho_rhs[...] += -grid.dfdx(rho_u)
 
-    rho_u_rhs[...] = -dfdy(rho_u*rho_v/rho, dn)*dndy
+    rho_u_rhs[...] = -grid.dfdy(rho_u*rho_v/rho)
     rho_u_rhs[[0,-1], :] = 0
-    rho_u_rhs += -dfdx(rho_u*rho_u/rho + prs, dx) 
+    rho_u_rhs += -grid.dfdx(rho_u*rho_u/rho + prs) 
     
-    rho_v_rhs[...] = -dfdy(rho_v*rho_v/rho + prs, dn)*dndy
+    rho_v_rhs[...] = -grid.dfdy(rho_v*rho_v/rho + prs)
     rho_v_rhs[[0,-1], :] = 0 
-    rho_v_rhs += -dfdx(rho_v*rho_u/rho , dx)
+    rho_v_rhs += -grid.dfdx(rho_v*rho_u/rho )
     
-    egy_rhs_x = -dfdx((egy + prs)*(rho_u/rho), dx)
-    egy_rhs_y = -dfdy((egy + prs)*(rho_v/rho), dn)*dndy
+    egy_rhs_x = -grid.dfdx((egy + prs)*(rho_u/rho))
+    egy_rhs_y = -grid.dfdy((egy + prs)*(rho_v/rho))
     
     egy_rhs_y[[0,-1], :] = 0
     egy_rhs[...] = egy_rhs_x + egy_rhs_y
 
-def rhs_viscous_terms(params, fields, dndy):
+def rhs_viscous_terms(params, fields, grid):
 
     rho = fields.rho
     rho_u = fields.rho_u
@@ -184,23 +190,23 @@ def rhs_viscous_terms(params, fields, dndy):
     mu = params.mu_ref
     kappa = params.kappa_ref
 
-    div_vel = dfdx(rho_u/rho, dx) + dfdy(rho_v/rho, dn)*dndy
-    tau_11 = -(2./3)*mu*div_vel + 2*mu*dfdx(rho_u/rho, dx) 
-    tau_12 = mu*(dfdx(rho_v/rho, dx) + dfdy(rho_u/rho, dn)*dndy)
-    tau_22 = -(2./3)*mu*div_vel + 2*mu*dfdy(rho_v/rho, dn)*dndy
+    div_vel = grid.dfdx(rho_u/rho) + grid.dfdy(rho_v/rho)
+    tau_11 = -(2./3)*mu*div_vel + 2*mu*grid.dfdx(rho_u/rho) 
+    tau_12 = mu*(grid.dfdx(rho_v/rho) + grid.dfdy(rho_u/rho))
+    tau_22 = -(2./3)*mu*div_vel + 2*mu*grid.dfdy(rho_v/rho)
     
     tau_12[0, :] = (18.*tau_12[1, :] - 9*tau_12[2, :] + 2*tau_12[3, :])/11.
     tau_12[-1, :] = (18.*tau_12[-2, :] - 9*tau_12[-3, :] + 2*tau_12[-4, :])/11.
 
-    rho_u_rhs += (dfdx(tau_11, dx) + dfdy(tau_12,dn)*dndy)
-    rho_v_rhs += (dfdx(tau_12, dx) + dfdy(tau_22,dn)*dndy)
-    egy_rhs += (dfdx(rho_u/rho*tau_11, dx) + dfdx(rho_v/rho*tau_12, dx) + dfdy(rho_u/rho*tau_12, dn)*dndy + dfdy(rho_v/rho*tau_22, dn)*dndy) + kappa*(dfdx(dfdx(tmp, dx), dx) + dfdy(dfdy(tmp, dn)*dndy, dn)*dndy)
+    rho_u_rhs += (grid.dfdx(tau_11) + grid.dfdy(tau_12))
+    rho_v_rhs += (grid.dfdx(tau_12) + grid.dfdy(tau_22))
+    egy_rhs += (grid.dfdx(rho_u/rho*tau_11) + grid.dfdx(rho_v/rho*tau_12) + grid.dfdy(rho_u/rho*tau_12) + grid.dfdy(rho_v/rho*tau_22)) + kappa*(grid.dfdx(grid.dfdx(tmp)) + grid.dfdy(grid.dfdy(tmp)))
 
 def apply_filter(params, fields):
     for f in fields.rho, fields.rho_u, fields.rho_v, fields.egy:
         filter5(f)
 
-def non_reflecting_boundary_conditions(params, fields, dndy):
+def non_reflecting_boundary_conditions(params, fields, grid):
     
     rho = fields.rho
     rho_u = fields.rho_u
@@ -222,10 +228,10 @@ def non_reflecting_boundary_conditions(params, fields, dndy):
 
     C_sound = np.sqrt(params.Cp/params.Cv*params.Rspecific*tmp)
 
-    dpdy = dfdy(prs, dn)*dndy
-    drhody = dfdy(rho, dn)*dndy
-    dudy = dfdy(rho_u/rho, dn)*dndy
-    dvdy = dfdy(rho_v/rho, dn)*dndy
+    dpdy = grid.dfdy(prs)
+    drhody = grid.dfdy(rho)
+    dudy = grid.dfdy(rho_u/rho)
+    dvdy = grid.dfdy(rho_v/rho)
     
     L_1 = (rho_v/rho - C_sound) * (dpdy - rho*C_sound*dvdy)
     L_2 = rho_v/rho* (C_sound**2 * drhody - dpdy)
@@ -263,7 +269,7 @@ def non_reflecting_boundary_conditions(params, fields, dndy):
         d_2*(prs + egy)/(rho*C_sound**2) -
         rho*(rho_v/rho*d_4+rho_u/rho*d_3))[-1, :]
 
-def rhs(eqvars, params, fields, eos, dndy):
+def rhs(eqvars, params, fields, eos, grid):
 
     eos.update_pressure()
 
@@ -278,24 +284,24 @@ def rhs(eqvars, params, fields, eos, dndy):
     rho_v_rhs = fields.rho_v_rhs
     egy_rhs = fields.egy_rhs
 
-    rhs_euler_terms(params, fields, dndy)
+    rhs_euler_terms(params, fields, grid)
 
-    rhs_viscous_terms(params, fields, dndy)
+    rhs_viscous_terms(params, fields, grid)
 
-    non_reflecting_boundary_conditions(params, fields, dndy)
+    non_reflecting_boundary_conditions(params, fields, grid)
 
     return fields.rho_rhs, fields.rho_u_rhs, fields.rho_v_rhs, fields.egy_rhs
 
 def main():
     paramfile = sys.argv[1]
+
     p = Params(paramfile)
     f = Fields(p)
-
+    g = AsinhGrid(p.N, p.N, p.Lx, p.Ly, p.grid_beta, BoundaryType.PERIODIC, BoundaryType.INNER)
     # make grid
-    x, y, dndy, d2ndy2 = asinh_grid(p.N, p.N, p.Lx, p.Ly, p.grid_beta)
 
     # initialize fields
-    weight = np.tanh(np.sqrt(np.pi)*y/p.vorticity_thickness)
+    weight = np.tanh(np.sqrt(np.pi)*g.y/p.vorticity_thickness)
 
     f.tmp[:, :] = p.T_inf2 + (weight+1)/2.*(p.T_inf1-p.T_inf2)
     f.rho[:, :] = p.P_inf/(p.Rspecific*f.tmp[:, :])
@@ -303,7 +309,7 @@ def main():
     f.rho_u[:, :] = f.rho*(p.U_inf2+(weight+1)/2.*(p.U_inf1-p.U_inf2))
     f.rho_v[:, :] = 0.0
 
-    u_pert, v_pert = add_forcing(p, f, x, y, dndy, d2ndy2)
+    u_pert, v_pert = add_forcing(p, f, g)
 
     f.rho_u += f.rho*u_pert
     f.rho_v += f.rho*v_pert
@@ -314,14 +320,14 @@ def main():
 
     # make time stepper
     stepper = RK4([f.rho, f.rho_u, f.rho_v, f.egy],
-            rhs, p, f, eos, dndy)
+            rhs, p, f, eos, g)
     
     # run simulation
     import timeit
 
     for i in range(p.timesteps):
         
-        dt = calculate_timestep(p, f, eos, x, y)
+        dt = calculate_timestep(p, f, eos, g.x, g.y)
 
         print("Iteration: {:10d}    Time: {:15.10e}    Total energy: {:15.10e}".format(i, dt*i, np.sum(f.egy)))
 
