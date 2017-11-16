@@ -3,7 +3,7 @@ import h5py
 import sys
 from numba import jit, float64, prange
 
-from .derivatives import dfdx, dfdy, BoundaryType
+from .derivatives import BoundaryType
 from .params import Params
 from .fields import Fields
 from .grid import SinhGrid

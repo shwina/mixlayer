@@ -57,4 +57,3 @@ class SinhGrid(object):
         
     def dfdy(self, f):
         return dfdy(f, self.dn, boundary_type=self.by)*self.dndy
-
