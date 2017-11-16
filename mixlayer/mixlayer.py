@@ -6,7 +6,7 @@ from numba import jit, float64, prange
 from .derivatives import dfdx, dfdy, BoundaryType
 from .params import Params
 from .fields import Fields
-from .grid import AsinhGrid
+from .grid import SinhGrid
 from .timestepping import RK4
 from .filtering import filter5
 from .eos import IdealGasEOS
@@ -297,7 +297,7 @@ def main():
 
     p = Params(paramfile)
     f = Fields(p)
-    g = AsinhGrid(p.N, p.N, p.Lx, p.Ly, p.grid_beta, BoundaryType.PERIODIC, BoundaryType.INNER)
+    g = SinhGrid(p.N, p.N, p.Lx, p.Ly, p.grid_beta, BoundaryType.PERIODIC, BoundaryType.INNER)
     # make grid
 
     # initialize fields

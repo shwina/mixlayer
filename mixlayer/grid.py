@@ -1,14 +1,13 @@
 import numpy as np
 from .derivatives import dfdx, dfdy
 
-class AsinhGrid(object):
+class SinhGrid(object):
 
     def __init__(self, nx, ny, Lx, Ly, beta, bx, by):
         """
-
+        
         """
-        #FIXME: This needs to be Lx-1 for a general grid..
-        dx = Lx/nx
+        dx = Lx/(nx-1)
         dn = 1./(ny-1)
         x = np.arange(nx)*dx*np.ones([ny, nx])
         y = np.arange(0, 1+dn, dn)*np.ones([ny, nx])
