@@ -1,15 +1,16 @@
+import sys
+
 import numpy as np
 import h5py
-import sys
 from numba import jit, float64, prange
 
-from .derivatives import BoundaryType
 from .params import Params
 from .fields import Fields
+from .derivatives import BoundaryType
 from .grid import SinhGrid
 from .timestepping import RK4
 from .filtering import filter5
-from .eos import IdealGasEOS
+from .models.eos import IdealGasEOS
 
 @jit(nopython=True, nogil=True)
 def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):

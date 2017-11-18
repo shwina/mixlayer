@@ -1,5 +1,5 @@
 import numpy as np
-from .derivatives import dfdx, dfdy
+from ..derivatives import dfdx, dfdy
 
 class SinhGrid(object):
 
