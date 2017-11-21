@@ -1,11 +1,12 @@
 import sys
 
+from attrdict import AttrDict
+import yaml
+
 import numpy as np
 import h5py
 from numba import jit, float64, prange
 
-from .params import Params
-from .fields import Fields
 from .derivatives import BoundaryType
 from .grid import SinhGrid
 from .timestepping import RK4
@@ -301,12 +302,66 @@ def rhs(eqvars, params, fields, eos, grid):
     return fields.rho_rhs, fields.rho_u_rhs, fields.rho_v_rhs, fields.egy_rhs
 
 def main():
+
     paramfile = sys.argv[1]
 
-    p = Params(paramfile)
-    f = Fields(p)
-    g = SinhGrid(p.N, p.N, p.Lx, p.Ly, p.grid_beta, BoundaryType.PERIODIC, BoundaryType.INNER)
+    p = AttrDict()
+    f = AttrDict()
+
+    with open(paramfile) as f:
+        p.update(yaml.load(f))
+
+    p.Ly = p.Lx*((p.N-1)/p.N)*2.
+
+    # reference temperature
+    p.T_ref = max([p.T_inf2, 344.6])
+
+    # eos parameters
+    p.Rspecific = 287
+
+    # reference density
+    p.rho_ref1 = p.P_inf/(p.Rspecific*p.T_inf1)
+    p.rho_ref2 = p.P_inf/(p.Rspecific*p.T_inf2)
+    p.rho_ref = (p.rho_ref1+p.rho_ref2)/2.0
+
+    # reference velocities 
+    p.C_sound1 = np.sqrt((p.Cp/p.Cv)*(p.Rspecific)*p.T_inf1)
+    p.C_sound2 = np.sqrt((p.Cp/p.Cv)*(p.Rspecific)*p.T_inf2)
+    p.U_inf1 = 2*p.Ma*p.C_sound1/(1+np.sqrt(p.rho_ref1/p.rho_ref2)*(p.C_sound1/p.C_sound2))
+    p.U_inf2 = -np.sqrt(p.rho_ref1/p.rho_ref2)*p.U_inf1
+    p.U_ref = p.U_inf1-p.U_inf2
+
+    # grid parameters
+    p.dx = p.Lx/p.N
+    p.dn = 1./(p.N-1)
+
+    # geometric parameters
+    p.disturbance_wavelength = p.Lx/p.nperiod
+    p.vorticity_thickness = p.disturbance_wavelength/7.29
+
+    # reference viscosity; thermal and molecular diffusivities
+    p.rho_ref = (p.rho_ref1+p.rho_ref2)/2.0
+    p.mu_ref = (p.rho_ref*(p.U_inf1-p.U_inf2)*p.vorticity_thickness)/p.Re
+    p.kappa_ref = 0.5*(p.Cp+p.Cp)*p.mu_ref/p.Pr 
+    p.gamma_ref = p.mu_ref/(p.rho_ref*p.Pr)
+
+    # fields
+    dims = [p.N, p.N]
+    f.rho = np.zeros(dims, dtype=np.float64)
+    f.rho_u = np.zeros(dims, dtype=np.float64)
+    f.rho_v = np.zeros(dims, dtype=np.float64)
+    f.tmp = np.zeros(dims, dtype=np.float64)
+    f.prs = np.zeros(dims, dtype=np.float64)
+    f.egy = np.zeros(dims, dtype=np.float64)
+    f.rho_rhs = np.zeros(dims, dtype=np.float64)
+    f.rho_u_rhs = np.zeros(dims, dtype=np.float64)
+    f.rho_v_rhs = np.zeros(dims, dtype=np.float64)
+    f.egy_rhs = np.zeros(dims, dtype=np.float64)
+    f.stream = np.zeros(dims, dtype=np.float64)
+    f.vort = np.zeros(dims, dtype=np.float64)
+
     # make grid
+    g = SinhGrid(p.N, p.N, p.Lx, p.Ly, p.grid_beta, BoundaryType.PERIODIC, BoundaryType.INNER)
 
     # initialize fields
     weight = np.tanh(np.sqrt(np.pi)*g.y/p.vorticity_thickness)
