@@ -34,65 +34,44 @@ def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
             f[i,j] = f[i,j] + 1.6*(fnew - f[i,j])
     return np.linalg.norm(f-f_old)
 
-def add_forcing(params, fields, grid):
-    N = params.N
-    dn = params.dn
-    stream = fields.stream
-    vort = fields.vort
+def add_forcing(p, f, g):
 
-    dn = grid.dn
-    dndy = grid.dndy
-    d2ndy2 = grid.d2ndy2
-    x = grid.x
-    y = grid.y
-
-    U_ref = params.U_ref
-    Famp_2d = params.Famp_2d
-    vorticity_thickness = params.vorticity_thickness
-    disturbance_wavelength = params.disturbance_wavelength
-    nperiod = params.nperiod
-
-    dx = 1./N
-    dy = x.copy()
-    dy[:-1, :] = y[1:, :] - y[:-1, :]
-    dy[-1, :] = y[-1, :] - y[-2, :]
-
-    fx = np.zeros_like(x, dtype=np.float64)
-    fy = np.zeros_like(x, dtype=np.float64)
+    fx = np.zeros_like(g.x, dtype=np.float64)
+    fy = np.zeros_like(g.x, dtype=np.float64)
     fx_max = 0
 
-    vort = np.zeros_like(x, dtype=np.float64)
-    stream = np.zeros([N+2, N+2], dtype=np.float64)
+    vort = np.zeros_like(g.x, dtype=np.float64)
+    stream = np.zeros([p.N+2, p.N+2], dtype=np.float64)
 
     amplitudes = [1, 0.5, 0.35, 0.35]
     for i in range(4):
-        fx += amplitudes[i]*np.abs(np.sin(np.pi*x/(2**i*disturbance_wavelength)))
+        fx += amplitudes[i]*np.abs(np.sin(np.pi*g.x/(2**i*p.disturbance_wavelength)))
         fx_max = np.max([np.max(fx), fx_max])
     
     fx = fx/fx_max
-    fy = np.exp(-np.pi*y**2/vorticity_thickness**2)
+    fy = np.exp(-np.pi*g.y**2/p.vorticity_thickness**2)
     
     vort[...] = fx*fy
-    circ = np.sum(dy*dx*vort)
+    circ = np.sum(g.dy*g.dx*vort)
 
-    vort[...] = (vort*Famp_2d*disturbance_wavelength*U_ref) / (circ/nperiod)
+    vort[...] = (vort*p.Famp_2d*p.disturbance_wavelength*p.U_ref) / (circ/p.nperiod)
 
     for i in range(50000):
-        err = jacobi_step(stream, dx, dn, -vort, dndy, d2ndy2)
+        err = jacobi_step(stream, p.dx, p.dn, -vort, g.dndy, g.d2ndy2)
         if err <= 1e-5:
             break
 
-    u_pert = (stream[2:,1:-1] - stream[0:-2,1:-1])*dndy/(2*dn)
-    v_pert = -(stream[1:-1,2:] - stream[1:-1,0:-2])/(2*dx)
+    u_pert = (stream[2:,1:-1] - stream[0:-2,1:-1])*g.dndy/(2*g.dn)
+    v_pert = -(stream[1:-1,2:] - stream[1:-1,0:-2])/(2*g.dx)
        
-    vort[...] = ((stream[1:-1, 2:] - 2*stream[1:-1, 1:-1] + stream[1:-1, 0:-2])/(dx**2) +
-            ((stream[2:, 1:-1] - stream[0:-2, 1:-1])*d2ndy2/(2*dn)) +
-            ((stream[2:, 1:-1] - 2*stream[1:-1, 1:-1] + stream[0:-2, 1:-1])/(dn**2))*dndy**2)
+    vort[...] = ((stream[1:-1, 2:] - 2*stream[1:-1, 1:-1] + stream[1:-1, 0:-2])/(g.dx**2) +
+            ((stream[2:, 1:-1] - stream[0:-2, 1:-1])*g.d2ndy2/(2*g.dn)) +
+            ((stream[2:, 1:-1] - 2*stream[1:-1, 1:-1] + stream[0:-2, 1:-1])/(g.dn**2))*g.dndy**2)
 
-    circ = np.sum(dy*dx*vort)
+    circ = np.sum(g.dy*g.dx*vort)
 
-    u_pert = u_pert*Famp_2d*disturbance_wavelength*U_ref / (circ/nperiod)
-    v_pert = v_pert*Famp_2d*disturbance_wavelength*U_ref / (circ/nperiod)
+    u_pert = u_pert*p.Famp_2d*p.disturbance_wavelength*p.U_ref / (circ/p.nperiod)
+    v_pert = v_pert*p.Famp_2d*p.disturbance_wavelength*p.U_ref / (circ/p.nperiod)
 
     return u_pert, v_pert
 
