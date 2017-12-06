@@ -8,7 +8,7 @@ import h5py
 from numba import jit, float64, prange
 
 from .derivatives import BoundaryType
-from .grid import SinhGrid
+from .grid.mapped import SinhGrid
 from .timestepping import RK4
 from .filtering import filter5
 from .models.eos import IdealGasEOS
