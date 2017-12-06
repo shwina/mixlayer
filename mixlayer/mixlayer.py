@@ -75,210 +75,135 @@ def add_forcing(p, f, g):
 
     return u_pert, v_pert
 
-def calculate_timestep(params, fields, eos, grid):
+def calculate_timestep(p, f, g, eos):
 
-    fields.tmp[...] = (
-            fields.egy -
-            0.5*(fields.rho_u**2 + fields.rho_v**2)/fields.rho
-        ) / (fields.rho*eos.Cv)
+    f.tmp[...] = (
+            f.egy -
+            0.5*(f.rho_u**2 + f.rho_v**2)/f.rho
+        ) / (f.rho*eos.Cv)
 
-    eos.pressure(fields.tmp, fields.rho, fields.prs)
+    eos.pressure(f.tmp, f.rho, f.prs)
 
-    rho = fields.rho
-    rho_u = fields.rho_u
-    rho_v = fields.rho_v
-    egy = fields.egy
-    tmp = fields.tmp
-    prs = fields.prs
-
-    gamma_ref = params.gamma_ref
-    mu_ref = params.mu_ref
-    kappa_ref = params.kappa_ref
-    Cp = params.Cp
-    Cv = params.Cv
-    Rspecific = params.Rspecific
-    cfl_vel = params.cfl_vel
-    cfl_visc = params.cfl_visc
-
-    # dx, dy
-    dx = grid.dx
-    dy = grid.dy
-
-    dxmin = np.minimum(dx, dy)
+    dxmin = np.minimum(g.dx, g.dy)
 
     # calculate diffusivities:
-    alpha_1 = gamma_ref
-    alpha_2 = mu_ref/rho
-    alpha_3 = kappa_ref/(Cp*rho)
+    alpha_1 = p.gamma_ref
+    alpha_2 = p.mu_ref/f.rho
+    alpha_3 = p.kappa_ref/(eos.Cp*f.rho)
     alpha_max = np.maximum(np.maximum(alpha_1, alpha_2), alpha_3)
 
     # calculate C_sound
-    C_sound = np.sqrt(Cp/Cv*Rspecific*tmp)
-    test_1 = cfl_vel*dx/(C_sound + abs(rho_u/rho))
-    test_2 = cfl_vel*dy/(C_sound + abs(rho_v/rho))
-    test_3 = cfl_visc*(dxmin**2)/alpha_max
+    C_sound = np.sqrt(eos.Cp/eos.Cv*eos.R*f.tmp)
+    test_1 = p.cfl_vel*g.dx/(C_sound + abs(f.rho_u/f.rho))
+    test_2 = p.cfl_vel*g.dy/(C_sound + abs(f.rho_v/f.rho))
+    test_3 = p.cfl_visc*(dxmin**2)/alpha_max
 
     dt = np.min(np.minimum(np.minimum(test_1, test_2), test_3))
     return dt
 
-def rhs_euler_terms(params, fields, grid):
- 
-    rho = fields.rho
-    rho_u = fields.rho_u
-    rho_v = fields.rho_v
-    egy = fields.egy
-    tmp = fields.tmp
-    prs = fields.prs
-    rho_rhs = fields.rho_rhs
-    rho_u_rhs = fields.rho_u_rhs
-    rho_v_rhs = fields.rho_v_rhs
-    egy_rhs = fields.egy_rhs
+def rhs_euler_terms(p, f, g):
 
-    dx = params.dx
-    dn = params.dn
+    f.rho_rhs[...] = -g.dfdy(f.rho_v)
+    f.rho_rhs[[0,-1], :] = 0
+    f.rho_rhs[...] += -g.dfdx(f.rho_u)
 
-    rho_rhs[...] = -grid.dfdy(rho_v)
-    rho_rhs[[0,-1], :] = 0
-    rho_rhs[...] += -grid.dfdx(rho_u)
-
-    rho_u_rhs[...] = -grid.dfdy(rho_u*rho_v/rho)
-    rho_u_rhs[[0,-1], :] = 0
-    rho_u_rhs += -grid.dfdx(rho_u*rho_u/rho + prs) 
+    f.rho_u_rhs[...] = -g.dfdy(f.rho_u * f.rho_v/f.rho)
+    f.rho_u_rhs[[0,-1], :] = 0
+    f.rho_u_rhs += -g.dfdx(f.rho_u*f.rho_u/f.rho + f.prs) 
     
-    rho_v_rhs[...] = -grid.dfdy(rho_v*rho_v/rho + prs)
-    rho_v_rhs[[0,-1], :] = 0 
-    rho_v_rhs += -grid.dfdx(rho_v*rho_u/rho )
+    f.rho_v_rhs[...] = -g.dfdy(f.rho_v*f.rho_v/f.rho + f.prs)
+    f.rho_v_rhs[[0,-1], :] = 0 
+    f.rho_v_rhs += -g.dfdx(f.rho_v*f.rho_u/f.rho )
     
-    egy_rhs_x = -grid.dfdx((egy + prs)*(rho_u/rho))
-    egy_rhs_y = -grid.dfdy((egy + prs)*(rho_v/rho))
-    
+    egy_rhs_x = -g.dfdx((f.egy + f.prs)*(f.rho_u/f.rho))
+    egy_rhs_y = -g.dfdy((f.egy + f.prs)*(f.rho_v/f.rho))
     egy_rhs_y[[0,-1], :] = 0
-    egy_rhs[...] = egy_rhs_x + egy_rhs_y
 
-def rhs_viscous_terms(params, fields, grid):
+    f.egy_rhs[...] = egy_rhs_x + egy_rhs_y
 
-    rho = fields.rho
-    rho_u = fields.rho_u
-    rho_v = fields.rho_v
-    egy = fields.egy
-    tmp = fields.tmp
-    prs = fields.prs
-    rho_rhs = fields.rho_rhs
-    rho_u_rhs = fields.rho_u_rhs
-    rho_v_rhs = fields.rho_v_rhs
-    egy_rhs = fields.egy_rhs
+def rhs_viscous_terms(p, f, g):
+
+    div_vel = g.dfdx(f.rho_u / f.rho) + g.dfdy(f.rho_v / f.rho)
+
+    tau_11 = -(2./3)*p.mu_ref*div_vel + 2*p.mu_ref*g.dfdx(f.rho_u / f.rho) 
+    tau_22 = -(2./3)*p.mu_ref*div_vel + 2*p.mu_ref*g.dfdy(f.rho_v / f.rho)
+    tau_12 = p.mu_ref*(g.dfdx(f.rho_v / f.rho) + g.dfdy(f.rho_u / f.rho))
     
-    dx = params.dx
-    dn = params.dn
-    mu = params.mu_ref
-    kappa = params.kappa_ref
+    tau_12[0, :] = (18.*tau_12[1, :] - 9*tau_12[2, :] + 2*tau_12[3, :]) / 11
+    tau_12[-1, :] = (18.*tau_12[-2, :] - 9*tau_12[-3, :] + 2*tau_12[-4, :]) / 11
 
-    div_vel = grid.dfdx(rho_u/rho) + grid.dfdy(rho_v/rho)
-    tau_11 = -(2./3)*mu*div_vel + 2*mu*grid.dfdx(rho_u/rho) 
-    tau_12 = mu*(grid.dfdx(rho_v/rho) + grid.dfdy(rho_u/rho))
-    tau_22 = -(2./3)*mu*div_vel + 2*mu*grid.dfdy(rho_v/rho)
-    
-    tau_12[0, :] = (18.*tau_12[1, :] - 9*tau_12[2, :] + 2*tau_12[3, :])/11.
-    tau_12[-1, :] = (18.*tau_12[-2, :] - 9*tau_12[-3, :] + 2*tau_12[-4, :])/11.
+    f.rho_u_rhs += g.dfdx(tau_11) + g.dfdy(tau_12)
+    f.rho_v_rhs += g.dfdx(tau_12) + g.dfdy(tau_22)
+    f.egy_rhs += (g.dfdx(f.rho_u/f.rho * tau_11) +
+                  g.dfdx(f.rho_v/f.rho * tau_12) +
+                  g.dfdy(f.rho_u/f.rho * tau_12) +
+                  g.dfdy(f.rho_v/f.rho * tau_22) + 
+                  p.kappa_ref*(
+                    g.dfdx(g.dfdx(f.tmp)) +
+                    g.dfdy(g.dfdy(f.tmp))))
 
-    rho_u_rhs += (grid.dfdx(tau_11) + grid.dfdy(tau_12))
-    rho_v_rhs += (grid.dfdx(tau_12) + grid.dfdy(tau_22))
-    egy_rhs += (grid.dfdx(rho_u/rho*tau_11) + grid.dfdx(rho_v/rho*tau_12) + grid.dfdy(rho_u/rho*tau_12) + grid.dfdy(rho_v/rho*tau_22)) + kappa*(grid.dfdx(grid.dfdx(tmp)) + grid.dfdy(grid.dfdy(tmp)))
-
-def apply_filter(params, fields):
-    for f in fields.rho, fields.rho_u, fields.rho_v, fields.egy:
+def apply_filter(p, f):
+    for f in f.rho, f.rho_u, f.rho_v, f.egy:
         filter5(f)
 
-def non_reflecting_boundary_conditions(params, fields, grid):
+def non_reflecting_boundary_conditions(p, f, g, eos):
     
-    rho = fields.rho
-    rho_u = fields.rho_u
-    rho_v = fields.rho_v
-    egy = fields.egy
-    tmp = fields.tmp
-    prs = fields.prs
-    rho_rhs = fields.rho_rhs
-    rho_u_rhs = fields.rho_u_rhs
-    rho_v_rhs = fields.rho_v_rhs
-    egy_rhs = fields.egy_rhs
+    C_sound = np.sqrt(eos.Cp/eos.Cv * eos.R*f.tmp)
 
-    dx = params.dx
-    dn = params.dn
-    filter_amplitude = params.filter_amplitude
-    Ma = params.Ma
-    Ly = params.Ly
-    P_inf = params.P_inf
-
-    C_sound = np.sqrt(params.Cp/params.Cv*params.Rspecific*tmp)
-
-    dpdy = grid.dfdy(prs)
-    drhody = grid.dfdy(rho)
-    dudy = grid.dfdy(rho_u/rho)
-    dvdy = grid.dfdy(rho_v/rho)
+    dpdy = g.dfdy(f.prs)
+    drhody = g.dfdy(f.rho)
+    dudy = g.dfdy(f.rho_u/f.rho)
+    dvdy = g.dfdy(f.rho_v/f.rho)
     
-    L_1 = (rho_v/rho - C_sound) * (dpdy - rho*C_sound*dvdy)
-    L_2 = rho_v/rho* (C_sound**2 * drhody - dpdy)
-    L_3 = rho_v/rho* (dudy)
-    L_4 = 0.4 * (1 - Ma**2)*C_sound/Ly*(prs - P_inf)
+    L_1 = (f.rho_v/f.rho - C_sound) * (dpdy - f.rho*C_sound*dvdy)
+    L_2 = f.rho_v/f.rho * (C_sound**2 * drhody - dpdy)
+    L_3 = f.rho_v/f.rho * dudy
+    L_4 = 0.4*(1 - p.Ma**2) * C_sound/p.Ly * (f.prs - p.P_inf)
 
-    d_1 = (1./C_sound**2)*(L_2 + 0.5*(L_4 + L_1))
+    d_1 = (1. / C_sound**2) * (L_2 + 0.5*(L_4 + L_1))
     d_2 = 0.5*(L_1 + L_4)
     d_3 = L_3
-    d_4 = 1./(2*rho*C_sound) * (L_4 - L_1)
+    d_4 = 1./(2*f.rho*C_sound) * (L_4 - L_1)
 
-    rho_rhs[0, :] = (rho_rhs - d_1)[0, :]
-    rho_u_rhs[0, :] = (rho_u_rhs - rho_u/rho*d_1 - rho*d_3)[0, :]
-    rho_v_rhs[0, :] = (rho_v_rhs - rho_v/rho*d_1 - rho*d_4)[0, :]
-    egy_rhs[0, :] = (egy_rhs-
-        0.5*np.sqrt((rho_u/rho)**2 + (rho_v/rho)**2)*d_1 -
-        d_2*(prs + egy)/(rho*C_sound**2) -
-        rho*(rho_v/rho*d_4+rho_u/rho*d_3))[0, :]
+    f.rho_rhs[0, :] = (f.rho_rhs - d_1)[0, :]
+    f.rho_u_rhs[0, :] = (f.rho_u_rhs - f.rho_u/f.rho*d_1 - f.rho*d_3)[0, :]
+    f.rho_v_rhs[0, :] = (f.rho_v_rhs - f.rho_v/f.rho*d_1 - f.rho*d_4)[0, :]
+    f.egy_rhs[0, :] = (f.egy_rhs -
+        0.5*np.sqrt((f.rho_u/f.rho)**2 + (f.rho_v/f.rho)**2)*d_1 -
+        d_2 * (f.prs + f.egy) / (f.rho*C_sound**2) -
+        f.rho * (f.rho_v/f.rho * d_4 + f.rho_u/f.rho * d_3))[0, :]
 
-    L_1 = 0.4 * (1 - Ma**2)*C_sound/Ly*(prs - P_inf)
-    L_2 = rho_v/rho* (C_sound**2 * drhody - dpdy)
-    L_3 = rho_v/rho* (dudy)
-    L_4 = (rho_v/rho + C_sound) * (dpdy + rho*C_sound*dvdy)
+    L_1 = 0.4 * (1 - p.Ma**2) * C_sound/p.Ly * (f.prs - p.P_inf)
+    L_2 = f.rho_v/f.rho * (C_sound**2 * drhody - dpdy)
+    L_3 = f.rho_v/f.rho * dudy
+    L_4 = (f.rho_v/f.rho + C_sound) * (dpdy + f.rho*C_sound*dvdy)
 
-    d_1 = (1./C_sound**2)*(L_2 + 0.5*(L_4 + L_1))
+    d_1 = (1./C_sound**2) * (L_2 + 0.5*(L_4 + L_1))
     d_2 = 0.5*(L_1 + L_4)
     d_3 = L_3
-    d_4 = 1./(2*rho*C_sound) * (L_4 - L_1)
+    d_4 = 1/(2*f.rho*C_sound) * (L_4 - L_1)
 
-    rho_rhs[-1, :] = (rho_rhs - d_1)[-1, :]
-    rho_u_rhs[-1, :] = (rho_u_rhs - rho_u/rho*d_1 - rho*d_3)[-1, :]
-    rho_v_rhs[-1, :] = (rho_v_rhs - rho_v/rho*d_1 - rho*d_4)[-1, :]
-    egy_rhs[-1, :] = (egy_rhs-
-        0.5*np.sqrt((rho_u/rho)**2 + (rho_v/rho)**2)*d_1 -
-        d_2*(prs + egy)/(rho*C_sound**2) -
-        rho*(rho_v/rho*d_4+rho_u/rho*d_3))[-1, :]
+    f.rho_rhs[-1, :] = (f.rho_rhs - d_1)[-1, :]
+    f.rho_u_rhs[-1, :] = (f.rho_u_rhs - f.rho_u/f.rho*d_1 - f.rho*d_3)[-1, :]
+    f.rho_v_rhs[-1, :] = (f.rho_v_rhs - f.rho_v/f.rho*d_1 - f.rho*d_4)[-1, :]
+    f.egy_rhs[-1, :] = (f.egy_rhs-
+        0.5*np.sqrt((f.rho_u/f.rho)**2 + (f.rho_v/f.rho)**2)*d_1 -
+        d_2 * (f.prs + f.egy) / (f.rho*C_sound**2) -
+        f.rho * (f.rho_v/f.rho * d_4 + f.rho_u/f.rho * d_3))[-1, :]
 
-def rhs(eqvars, params, fields, eos, grid):
+def rhs(eqvars, p, f, g, eos):
 
-    fields.tmp[...] = (
-            fields.egy -
-            0.5*(fields.rho_u**2 + fields.rho_v**2)/fields.rho
-        ) / (fields.rho*eos.Cv)
+    f.tmp[...] = (f.egy - 0.5*(f.rho_u**2 + f.rho_v**2)/f.rho) / (f.rho*eos.Cv)
 
-    eos.pressure(fields.tmp, fields.rho, fields.prs)
+    eos.pressure(f.tmp, f.rho, f.prs)
 
-    rho = fields.rho
-    rho_u = fields.rho_u
-    rho_v = fields.rho_v
-    egy = fields.egy
-    tmp = fields.tmp
-    prs = fields.prs
-    rho_rhs = fields.rho_rhs
-    rho_u_rhs = fields.rho_u_rhs
-    rho_v_rhs = fields.rho_v_rhs
-    egy_rhs = fields.egy_rhs
+    rhs_euler_terms(p, f, g)
 
-    rhs_euler_terms(params, fields, grid)
+    rhs_viscous_terms(p, f, g)
 
-    rhs_viscous_terms(params, fields, grid)
+    non_reflecting_boundary_conditions(p, f, g, eos)
 
-    non_reflecting_boundary_conditions(params, fields, grid)
-
-    return fields.rho_rhs, fields.rho_u_rhs, fields.rho_v_rhs, fields.egy_rhs
+    return f.rho_rhs, f.rho_u_rhs, f.rho_v_rhs, f.egy_rhs
 
 def main():
 
@@ -362,14 +287,14 @@ def main():
 
     # make time stepper
     stepper = RK4([f.rho, f.rho_u, f.rho_v, f.egy],
-            rhs, p, f, eos, g)
+            rhs, p, f, g, eos)
     
     # run simulation
     import timeit
 
     for i in range(p.timesteps):
         
-        dt = calculate_timestep(p, f, eos, g)
+        dt = calculate_timestep(p, f, g, eos)
 
         print("Iteration: {:10d}    Time: {:15.10e}    Total energy: {:15.10e}".format(i, dt*i, np.sum(f.egy)))
 
