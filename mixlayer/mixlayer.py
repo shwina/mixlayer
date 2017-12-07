@@ -14,23 +14,29 @@ from .filtering import filter5
 from .models.eos import IdealGasEOS
 
 @jit(nopython=True, nogil=True)
-def jacobi_step(f, dx, dn, rhs, dndy, d2ndy2):
+def jacobi_step(f, dx, dy, rhs):
     f_old = f.copy()
-    denominator = 2./dx**2 + (2./dn**2)*dndy**2
+    denominator = 2./dx**2 + 2./dy**2
+    ny, nx = rhs.shape
+    
+    for i in range(1, ny-1):
+        for j in range(nx):
 
-    ny, nx = f.shape
+            if j == 0:
+                fnew = (-rhs[i, j] +
+                        (f[i,j+1] + f[i,j-1])/dx**2 +
+                        (f[i+1,j] + f[i-1,j])/dy[i,j]**2)/denominator[i,j]
 
-    f[0, :] = 0
-    f[-1, :] = 0
-    f[:, 0] = f[:, -2]
-    f[:, -1] = f[:, 1]
+            elif j == nx-1:
+                fnew = (-rhs[i, j] +
+                        (f[i,0 ] + f[i,j-1])/dx**2 +
+                        (f[i+1,j] + f[i-1,j])/dy[i,j]**2)/denominator[i,j]
+            
+            else:
+                fnew = (-rhs[i, j] +
+                        (f[i,j+1] + f[i,j-1])/dx**2 +
+                        (f[i+1,j] + f[i-1,j])/dy[i,j]**2)/denominator[i,j]
 
-    for i in range(1, nx-1):
-        for j in range(1, nx-1):
-            fnew = (-rhs[i-1, j-1] +
-                    (f[i,j+1] + f[i,j-1])/dx**2 +
-                    (f[i+1,j] - f[i-1,j])/(2*dn)*d2ndy2[i-1,j-1] +
-                    (f[i+1,j] + f[i-1,j])/(dn**2)*dndy[i-1,j-1]**2)/denominator[i-1,j-1]
             f[i,j] = f[i,j] + 1.6*(fnew - f[i,j])
     return np.linalg.norm(f-f_old)
 
@@ -41,7 +47,7 @@ def add_forcing(p, f, g):
     fx_max = 0
 
     vort = np.zeros_like(g.x, dtype=np.float64)
-    stream = np.zeros([p.N+2, p.N+2], dtype=np.float64)
+    stream = np.zeros([p.N, p.N], dtype=np.float64)
 
     amplitudes = [1, 0.5, 0.35, 0.35]
     for i in range(4):
@@ -57,16 +63,17 @@ def add_forcing(p, f, g):
     vort[...] = (vort*p.Famp_2d*p.disturbance_wavelength*p.U_ref) / (circ/p.nperiod)
 
     for i in range(50000):
-        err = jacobi_step(stream, p.dx, p.dn, -vort, g.dndy, g.d2ndy2)
+        err = jacobi_step(stream, g.dx, g.dy, -vort)
         if err <= 1e-5:
             break
 
-    u_pert = (stream[2:,1:-1] - stream[0:-2,1:-1])*g.dndy/(2*g.dn)
-    v_pert = -(stream[1:-1,2:] - stream[1:-1,0:-2])/(2*g.dx)
-       
-    vort[...] = ((stream[1:-1, 2:] - 2*stream[1:-1, 1:-1] + stream[1:-1, 0:-2])/(g.dx**2) +
-            ((stream[2:, 1:-1] - stream[0:-2, 1:-1])*g.d2ndy2/(2*g.dn)) +
-            ((stream[2:, 1:-1] - 2*stream[1:-1, 1:-1] + stream[0:-2, 1:-1])/(g.dn**2))*g.dndy**2)
+    #u_pert = (stream[2:,1:-1] - stream[0:-2,1:-1])/(2*g.dy)
+    #v_pert = -(stream[1:-1,2:] - stream[1:-1,0:-2])/(2*g.dx)
+    u_pert = (np.roll(stream, -1, 1) - np.roll(stream, 1, 1))/(2*g.dy)
+    v_pert = -(np.roll(stream, -1, 0) - np.roll(stream, 1, 0))/(2*g.dx)
+
+    vort[...] = ((np.roll(stream, -1, 1) - 2*stream + np.roll(stream, 1, 1))/(g.dx**2) +
+                 (np.roll(stream, -1, 0) - 2*stream + np.roll(stream, 1, 0))/(g.dy**2))
 
     circ = np.sum(g.dy*g.dx*vort)
 
