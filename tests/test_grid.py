@@ -1,4 +1,4 @@
-from mixlayer.grid import SinhGrid
+from mixlayer.grid.mapped import SinhGrid
 from numpy.testing import assert_equal, assert_allclose
 
 import numpy as np

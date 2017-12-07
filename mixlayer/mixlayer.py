@@ -12,33 +12,8 @@ from .grid.mapped import SinhGrid
 from .timestepping import RK4
 from .filtering import filter5
 from .models.eos import IdealGasEOS
+from .poisson import PoissonSolver
 
-@jit(nopython=True, nogil=True)
-def jacobi_step(f, dx, dy, rhs):
-    f_old = f.copy()
-    denominator = 2./dx**2 + 2./dy**2
-    ny, nx = rhs.shape
-    
-    for i in range(1, ny-1):
-        for j in range(nx):
-
-            if j == 0:
-                fnew = (-rhs[i, j] +
-                        (f[i,j+1] + f[i,j-1])/dx**2 +
-                        (f[i+1,j] + f[i-1,j])/dy[i,j]**2)/denominator[i,j]
-
-            elif j == nx-1:
-                fnew = (-rhs[i, j] +
-                        (f[i,0 ] + f[i,j-1])/dx**2 +
-                        (f[i+1,j] + f[i-1,j])/dy[i,j]**2)/denominator[i,j]
-            
-            else:
-                fnew = (-rhs[i, j] +
-                        (f[i,j+1] + f[i,j-1])/dx**2 +
-                        (f[i+1,j] + f[i-1,j])/dy[i,j]**2)/denominator[i,j]
-
-            f[i,j] = f[i,j] + 1.6*(fnew - f[i,j])
-    return np.linalg.norm(f-f_old)
 
 def add_forcing(p, f, g):
 
@@ -62,13 +37,9 @@ def add_forcing(p, f, g):
 
     vort[...] = (vort*p.Famp_2d*p.disturbance_wavelength*p.U_ref) / (circ/p.nperiod)
 
-    for i in range(50000):
-        err = jacobi_step(stream, g.dx, g.dy, -vort)
-        if err <= 1e-5:
-            break
+    ps = PoissonSolver(p.N, g.dx, g.dy)
+    ps.solve(-vort, stream)
 
-    #u_pert = (stream[2:,1:-1] - stream[0:-2,1:-1])/(2*g.dy)
-    #v_pert = -(stream[1:-1,2:] - stream[1:-1,0:-2])/(2*g.dx)
     u_pert = (np.roll(stream, -1, 1) - np.roll(stream, 1, 1))/(2*g.dy)
     v_pert = -(np.roll(stream, -1, 0) - np.roll(stream, 1, 0))/(2*g.dx)
 

@@ -1,7 +1,6 @@
-from mixlayer.derivatives import dfdx, dfdy, BoundaryType
-from numpy.testing import assert_equal, assert_allclose
-
 import numpy as np
+from numpy.testing import assert_equal, assert_allclose
+from mixlayer.derivatives import dfdx, dfdy, BoundaryType
 
 def test_dfdx():
     x, y = np.meshgrid(np.linspace(0, 2*np.pi),
