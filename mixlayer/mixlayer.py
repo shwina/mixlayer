@@ -79,27 +79,15 @@ def calculate_timestep(p, f, g, eos):
     dt = np.min(np.minimum(np.minimum(test_1, test_2), test_3))
     return dt
 
-def rhs_euler_terms(p, f, g):
-
+def rho_rhs(p, f, g):
     f.rho_rhs[...] = -g.dfdy(f.rho_v)
     f.rho_rhs[[0,-1], :] = 0
     f.rho_rhs[...] += -g.dfdx(f.rho_u)
 
+def rho_u_rhs(p, f, g):
     f.rho_u_rhs[...] = -g.dfdy(f.rho_u * f.rho_v/f.rho)
     f.rho_u_rhs[[0,-1], :] = 0
     f.rho_u_rhs += -g.dfdx(f.rho_u*f.rho_u/f.rho + f.prs) 
-    
-    f.rho_v_rhs[...] = -g.dfdy(f.rho_v*f.rho_v/f.rho + f.prs)
-    f.rho_v_rhs[[0,-1], :] = 0 
-    f.rho_v_rhs += -g.dfdx(f.rho_v*f.rho_u/f.rho )
-    
-    egy_rhs_x = -g.dfdx((f.egy + f.prs)*(f.rho_u/f.rho))
-    egy_rhs_y = -g.dfdy((f.egy + f.prs)*(f.rho_v/f.rho))
-    egy_rhs_y[[0,-1], :] = 0
-
-    f.egy_rhs[...] = egy_rhs_x + egy_rhs_y
-
-def rhs_viscous_terms(p, f, g):
 
     div_vel = g.dfdx(f.rho_u / f.rho) + g.dfdy(f.rho_v / f.rho)
 
@@ -111,7 +99,39 @@ def rhs_viscous_terms(p, f, g):
     tau_12[-1, :] = (18.*tau_12[-2, :] - 9*tau_12[-3, :] + 2*tau_12[-4, :]) / 11
 
     f.rho_u_rhs += g.dfdx(tau_11) + g.dfdy(tau_12)
+
+def rho_v_rhs(p, f, g):
+    f.rho_v_rhs[...] = -g.dfdy(f.rho_v*f.rho_v/f.rho + f.prs)
+    f.rho_v_rhs[[0,-1], :] = 0 
+    f.rho_v_rhs += -g.dfdx(f.rho_v*f.rho_u/f.rho )
+
+    div_vel = g.dfdx(f.rho_u / f.rho) + g.dfdy(f.rho_v / f.rho)
+
+    tau_11 = -(2./3)*p.mu_ref*div_vel + 2*p.mu_ref*g.dfdx(f.rho_u / f.rho) 
+    tau_22 = -(2./3)*p.mu_ref*div_vel + 2*p.mu_ref*g.dfdy(f.rho_v / f.rho)
+    tau_12 = p.mu_ref*(g.dfdx(f.rho_v / f.rho) + g.dfdy(f.rho_u / f.rho))
+    
+    tau_12[0, :] = (18.*tau_12[1, :] - 9*tau_12[2, :] + 2*tau_12[3, :]) / 11
+    tau_12[-1, :] = (18.*tau_12[-2, :] - 9*tau_12[-3, :] + 2*tau_12[-4, :]) / 11
+
     f.rho_v_rhs += g.dfdx(tau_12) + g.dfdy(tau_22)
+
+def egy_rhs(p, f, g):
+    egy_rhs_x = -g.dfdx((f.egy + f.prs)*(f.rho_u/f.rho))
+    egy_rhs_y = -g.dfdy((f.egy + f.prs)*(f.rho_v/f.rho))
+    egy_rhs_y[[0,-1], :] = 0
+
+    f.egy_rhs[...] = egy_rhs_x + egy_rhs_y
+
+    div_vel = g.dfdx(f.rho_u / f.rho) + g.dfdy(f.rho_v / f.rho)
+
+    tau_11 = -(2./3)*p.mu_ref*div_vel + 2*p.mu_ref*g.dfdx(f.rho_u / f.rho) 
+    tau_22 = -(2./3)*p.mu_ref*div_vel + 2*p.mu_ref*g.dfdy(f.rho_v / f.rho)
+    tau_12 = p.mu_ref*(g.dfdx(f.rho_v / f.rho) + g.dfdy(f.rho_u / f.rho))
+    
+    tau_12[0, :] = (18.*tau_12[1, :] - 9*tau_12[2, :] + 2*tau_12[3, :]) / 11
+    tau_12[-1, :] = (18.*tau_12[-2, :] - 9*tau_12[-3, :] + 2*tau_12[-4, :]) / 11
+
     f.egy_rhs += (g.dfdx(f.rho_u/f.rho * tau_11) +
                   g.dfdx(f.rho_v/f.rho * tau_12) +
                   g.dfdy(f.rho_u/f.rho * tau_12) +
@@ -175,9 +195,10 @@ def rhs(eqvars, p, f, g, eos):
 
     eos.pressure(f.tmp, f.rho, f.prs)
 
-    rhs_euler_terms(p, f, g)
-
-    rhs_viscous_terms(p, f, g)
+    rho_rhs(p, f, g)
+    rho_u_rhs(p, f, g)
+    rho_v_rhs(p, f, g)
+    egy_rhs(p, f, g)
 
     non_reflecting_boundary_conditions(p, f, g, eos)
 
