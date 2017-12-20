@@ -257,10 +257,6 @@ def main():
     f.tmp = np.zeros(dims, dtype=np.float64)
     f.prs = np.zeros(dims, dtype=np.float64)
     f.egy = np.zeros(dims, dtype=np.float64)
-    f.rho_rhs = np.zeros(dims, dtype=np.float64)
-    f.rho_u_rhs = np.zeros(dims, dtype=np.float64)
-    f.rho_v_rhs = np.zeros(dims, dtype=np.float64)
-    f.egy_rhs = np.zeros(dims, dtype=np.float64)
     f.stream = np.zeros(dims, dtype=np.float64)
     f.vort = np.zeros(dims, dtype=np.float64)
 
@@ -301,8 +297,7 @@ def main():
     egy_eq.set_rhs_post_func(non_reflecting_boundary_conditions, p, f, g, eos, equations)
 
     # make time stepper
-    stepper = RK4([f.rho, f.rho_u, f.rho_v, f.egy],
-            rhs, equations)
+    stepper = RK4(equations)
     
     # run simulation
     import timeit

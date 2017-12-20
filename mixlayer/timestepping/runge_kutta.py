@@ -1,33 +1,32 @@
+"""
+Time steppers for ODEs
+
+Classes
+-------
+
+- `RK4` -- 4th order Runge-Kutta time-stepping
+"""
+
 import numpy as np
 
 class RK4:
+    """
+    4th order Runge-Kutta time-stepping.
 
-    def __init__(self, fields, rhs_func, *rhs_func_extra_args):
-        """
+    Parameters
+    ----------
 
-        Runge-Kutta time-stepper.
+    equations : Equation
+        List of Equation objects representing a system of ODEs that will
+        be evolved in a time step
+    """
 
-        Parameters
-        ----------
-        fields : tuple
-            ndarrays representing the field vectors that will be advanced
-            in a time step.
-
-        rhs_func : function
-            Function that computes the right-hand sides for all equations.
-            `fields` is assumed to be the first argument to the function.
-        
-        rhs_func_extra_args : *tuple
-            Any additional arguments to be passed to `rhs_func`.
-        """
-        self.fields = fields
-        self.rhs_func = rhs_func
-        self.rhs_func_extra_args = rhs_func_extra_args
+    def __init__(self, equations):
+        self.equations = equations
         self._allocate_arrays()
 
     def step(self, dt):
         """
-
         Take a time-step of "dt" and update fields.
 
         Parameters
@@ -36,32 +35,43 @@ class RK4:
         dt : float
             Time step length
         """
-        
-        for f, f0 in zip(self.fields, self.fields_0):
-            f0[...] = f
+
+        for eq, f0_ in zip(self.equations, self.f0):
+            f = eq.f
+            f0_[...] = f
 
         ki = [dt/6, dt/3, dt/3]
         hi = [dt/2, dt/2, dt]
 
         for h, k in zip(hi, ki):
-            rhss = self.rhs_func(self.fields, *self.rhs_func_extra_args)
-            for f, f0, f1, rhs in zip(self.fields, self.fields_0, self.fields_1, rhss):
-                f[...] = f0 + h*rhs
-                f1[...] = k*rhs
+
+            # first compute all right hand sides
+            for eq in self.equations:
+                eq.compute_rhs()
+
+            # then update f, f1
+            for eq, f0_, f1_ in zip(self.equations, self.f0, self.f1):
+                f = eq.f
+                rhs = eq.rhs
+                f[...] = f0_ + h*rhs
+                f1_[...] = k*rhs
 
         h = (dt/6)
 
-        rhss = self.rhs_func(self.fields, *self.rhs_func_extra_args)
-        for f, f0, f1, rhs in zip(self.fields, self.fields_0, self.fields_1, rhss):
-            f[...] = f0 + f1 + h*rhs
+        for eq in self.equations:
+            eq.compute_rhs()
+
+        for eq, f0_, f1_ in zip(self.equations, self.f0, self.f1):
+            f = eq.f
+            rhs = eq.rhs
+            f[...] = f0_ + f1_ + h*rhs
 
     def _allocate_arrays(self):
         """
-        Allocate extra storage.
+        Allocate extra storage for field vectors
         """
-        self.fields_0 = []
-        self.fields_1 = []
-        for field in self.fields:
-            self.fields_0.append(np.copy(field))
-            self.fields_1.append(np.copy(field))
-
+        self.f0 = []
+        self.f1 = []
+        for eq in self.equations:
+            self.f0.append(np.copy(eq.f))
+            self.f1.append(np.copy(eq.f))

@@ -1,18 +1,35 @@
 import numpy as np
 
 class Equation(object):
-    
+    """
+    Class for storing the ODE df/dt = rhs
+
+    Attributes
+    ----------
+
+    f : array_like
+        Field that is evolved in time
+
+    rhs : array_like
+        Right-hand side
+
+    rhs_func : function
+        Function for computing the right-hand side
+
+    rhs_pre_func : function
+        Function that must execute before rhs is computed.
+
+    rhs_post_func : function
+        Function that must execute after rhs is computed
+    """
+
     def __init__(self, f):
         self.f = f
-        self._allocate_arrays()
         self.rhs_pre_func = None
         self.rhs_post_func = None
+        self._allocate_arrays()
 
     def set_rhs_func(self, rhs_func, *args):
-        """
-        Must support a kwarg 'out' for storing the
-        right-hand side
-        """
         self.rhs_func = rhs_func
         self.rhs_func_args = args
 
@@ -25,7 +42,6 @@ class Equation(object):
         self.rhs_post_func_args = args
 
     def compute_rhs(self):
-
         if self.rhs_pre_func:
             self.rhs_pre_func(*self.rhs_pre_func_args)
 
