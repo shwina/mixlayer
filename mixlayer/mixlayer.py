@@ -194,7 +194,7 @@ def non_reflecting_boundary_conditions(p, f, g, eos, equations):
         d_2 * (f.prs + f.egy) / (f.rho*C_sound**2) -
         f.rho * (f.rho_v/f.rho * d_4 + f.rho_u/f.rho * d_3))[-1, :]
 
-def rhs_pre(f, eos):
+def update_temperature_and_pressure(f, eos):
     f.tmp[...] = (f.egy - 0.5*(f.rho_u**2 + f.rho_v**2)/f.rho) / (f.rho*eos.Cv)
     eos.pressure(f.tmp, f.rho, f.prs)
 
@@ -293,7 +293,7 @@ def main():
     rho_v_eq.set_rhs_func(rho_v_rhs, p, f, g)
     egy_eq.set_rhs_func(egy_rhs, p, f, g)
 
-    rho_eq.set_rhs_pre_func(rhs_pre, f, eos)
+    rho_eq.set_rhs_pre_func(update_temperature_and_pressure, f, eos)
     egy_eq.set_rhs_post_func(non_reflecting_boundary_conditions, p, f, g, eos, equations)
 
     # make time stepper
