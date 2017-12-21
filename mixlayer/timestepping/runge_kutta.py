@@ -16,13 +16,12 @@ class RK4:
     Parameters
     ----------
 
-    equations : Equation
-        List of Equation objects representing a system of ODEs that will
-        be evolved in a time step
     """
 
-    def __init__(self, equations):
-        self.equations = equations
+    def __init__(self, U, rhs_func, *rhs_func_args):
+        self.U = U
+        self.rhs_func = rhs_func
+        self.rhs_func_args = rhs_func_args
         self._allocate_arrays()
 
     def step(self, dt):
@@ -36,42 +35,31 @@ class RK4:
             Time step length
         """
 
-        for eq, f0_ in zip(self.equations, self.f0):
-            f = eq.f
-            f0_[...] = f
+        for f, f0 in zip(self.U, self.U0):
+            f0[...] = f
 
         ki = [dt/6, dt/3, dt/3]
         hi = [dt/2, dt/2, dt]
 
         for h, k in zip(hi, ki):
 
-            # first compute all right hand sides
-            for eq in self.equations:
-                eq.compute_rhs()
+            # first compute RHS
+            self.rhs_func(*self.rhs_func_args, out=self.rhs)
 
-            # then update f, f1
-            for eq, f0_, f1_ in zip(self.equations, self.f0, self.f1):
-                f = eq.f
-                rhs = eq.rhs
-                f[...] = f0_ + h*rhs
-                f1_[...] = k*rhs
+            # then update U, U1
+            self.U[...] = self.U0 + h*self.rhs
+            self.U1[...] = k*self.rhs
 
         h = (dt/6)
 
-        for eq in self.equations:
-            eq.compute_rhs()
+        self.rhs_func(*self.rhs_func_args, out=self.rhs)
 
-        for eq, f0_, f1_ in zip(self.equations, self.f0, self.f1):
-            f = eq.f
-            rhs = eq.rhs
-            f[...] = f0_ + f1_ + h*rhs
+        self.U[...] = self.U0 + self.U1 + h*self.rhs
 
     def _allocate_arrays(self):
         """
         Allocate extra storage for field vectors
         """
-        self.f0 = []
-        self.f1 = []
-        for eq in self.equations:
-            self.f0.append(np.copy(eq.f))
-            self.f1.append(np.copy(eq.f))
+        self.U0 = np.copy(self.U)
+        self.U1 = np.copy(self.U)
+        self.rhs = np.zeros_like(self.U)

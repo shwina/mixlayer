@@ -13,7 +13,6 @@ from .timestepping import RK4
 from .filtering import filter5
 from .models.eos import IdealGasEOS
 from .poisson import PoissonSolver
-from .equation import Equation
 
 def add_forcing(p, f, g):
 
@@ -144,12 +143,12 @@ def apply_filter(p, f):
     for f in f.rho, f.rho_u, f.rho_v, f.egy:
         filter5(f)
 
-def non_reflecting_boundary_conditions(p, f, g, eos, equations):
-    
-    rho_rhs = equations[0].rhs
-    rho_u_rhs = equations[1].rhs
-    rho_v_rhs = equations[2].rhs
-    egy_rhs = equations[3].rhs
+def non_reflecting_boundary_conditions(p, f, g, eos, rhs):
+
+    rho_rhs = rhs[0, ...]
+    rho_u_rhs = rhs[1, ...]
+    rho_v_rhs = rhs[2, ...]
+    egy_rhs = rhs[3, ...]
 
     C_sound = np.sqrt(eos.Cp/eos.Cv * eos.R*f.tmp)
 
@@ -198,12 +197,55 @@ def update_temperature_and_pressure(f, eos):
     f.tmp[...] = (f.egy - 0.5*(f.rho_u**2 + f.rho_v**2)/f.rho) / (f.rho*eos.Cv)
     eos.pressure(f.tmp, f.rho, f.prs)
 
-def rhs(eqvars, equations):
+def rhs(p, f, g, eos, out=None):
+    
+    update_temperature_and_pressure(f, eos)
 
-    for eq in equations:
-        eq.compute_rhs()
+    rho_rhs = out[0, ...]
+    rho_u_rhs = out[1, ...]
+    rho_v_rhs = out[2, ...]
+    egy_rhs = out[3, ...]
 
-    return equations[0].rhs, equations[1].rhs, equations[2].rhs, equations[3].rhs
+    # euler terms:
+    rho_rhs[...] = -g.dfdy(f.rho_v)
+    rho_rhs[[0,-1], :] = 0
+    rho_rhs[...] += -g.dfdx(f.rho_u)
+
+    rho_u_rhs[...] = -g.dfdy(f.rho_u * f.rho_v/f.rho)
+    rho_u_rhs[[0,-1], :] = 0
+    rho_u_rhs += -g.dfdx(f.rho_u*f.rho_u/f.rho + f.prs) 
+    
+    rho_v_rhs[...] = -g.dfdy(f.rho_v*f.rho_v/f.rho + f.prs)
+    rho_v_rhs[[0,-1], :] = 0 
+    rho_v_rhs += -g.dfdx(f.rho_v*f.rho_u/f.rho )
+    
+    egy_rhs_x = -g.dfdx((f.egy + f.prs)*(f.rho_u/f.rho))
+    egy_rhs_y = -g.dfdy((f.egy + f.prs)*(f.rho_v/f.rho))
+    egy_rhs_y[[0,-1], :] = 0
+
+    egy_rhs[...] = egy_rhs_x + egy_rhs_y
+
+    # viscous terms:
+    div_vel = g.dfdx(f.rho_u / f.rho) + g.dfdy(f.rho_v / f.rho)
+
+    tau_11 = -(2./3)*p.mu_ref*div_vel + 2*p.mu_ref*g.dfdx(f.rho_u / f.rho) 
+    tau_22 = -(2./3)*p.mu_ref*div_vel + 2*p.mu_ref*g.dfdy(f.rho_v / f.rho)
+    tau_12 = p.mu_ref*(g.dfdx(f.rho_v / f.rho) + g.dfdy(f.rho_u / f.rho))
+    
+    tau_12[0, :] = (18.*tau_12[1, :] - 9*tau_12[2, :] + 2*tau_12[3, :]) / 11
+    tau_12[-1, :] = (18.*tau_12[-2, :] - 9*tau_12[-3, :] + 2*tau_12[-4, :]) / 11
+
+    rho_u_rhs += g.dfdx(tau_11) + g.dfdy(tau_12)
+    rho_v_rhs += g.dfdx(tau_12) + g.dfdy(tau_22)
+    egy_rhs += (g.dfdx(f.rho_u/f.rho * tau_11) +
+                  g.dfdx(f.rho_v/f.rho * tau_12) +
+                  g.dfdy(f.rho_u/f.rho * tau_12) +
+                  g.dfdy(f.rho_v/f.rho * tau_22) + 
+                  p.kappa_ref*(
+                    g.dfdx(g.dfdx(f.tmp)) +
+                    g.dfdy(g.dfdy(f.tmp))))
+
+    non_reflecting_boundary_conditions(p, f, g, eos, out)
 
 def main():
 
@@ -251,12 +293,13 @@ def main():
 
     # fields
     dims = [p.N, p.N]
-    f.rho = np.zeros(dims, dtype=np.float64)
-    f.rho_u = np.zeros(dims, dtype=np.float64)
-    f.rho_v = np.zeros(dims, dtype=np.float64)
+    f.U = np.zeros([4, p.N, p.N], dtype=np.float64)
+    f.rho = f.U[0, ...]
+    f.rho_u = f.U[1, ...]
+    f.rho_v = f.U[2, ...]
+    f.egy = f.U[3, ...]
     f.tmp = np.zeros(dims, dtype=np.float64)
     f.prs = np.zeros(dims, dtype=np.float64)
-    f.egy = np.zeros(dims, dtype=np.float64)
     f.stream = np.zeros(dims, dtype=np.float64)
     f.vort = np.zeros(dims, dtype=np.float64)
 
@@ -281,23 +324,8 @@ def main():
 
     eos = IdealGasEOS()
 
-    # make equations
-    rho_eq = Equation(f.rho)
-    rho_u_eq = Equation(f.rho_u)
-    rho_v_eq = Equation(f.rho_v)
-    egy_eq = Equation(f.egy)
-    equations = [rho_eq, rho_u_eq, rho_v_eq, egy_eq]
-
-    rho_eq.set_rhs_func(rho_rhs, p, f, g)
-    rho_u_eq.set_rhs_func(rho_u_rhs, p, f, g)
-    rho_v_eq.set_rhs_func(rho_v_rhs, p, f, g)
-    egy_eq.set_rhs_func(egy_rhs, p, f, g)
-
-    rho_eq.set_rhs_pre_func(update_temperature_and_pressure, f, eos)
-    egy_eq.set_rhs_post_func(non_reflecting_boundary_conditions, p, f, g, eos, equations)
-
     # make time stepper
-    stepper = RK4(equations)
+    stepper = RK4(f.U, rhs, p, f, g, eos)
     
     # run simulation
     import timeit
