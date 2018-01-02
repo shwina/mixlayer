@@ -7,5 +7,5 @@ class IdealGasEOS(object):
         self.Cv = 718.0
         self.R = 287.0
 
-    def pressure(self, temperature, density, out):
+    def get_pressure(self, temperature, density, out):
         out[...] = density*self.R*temperature

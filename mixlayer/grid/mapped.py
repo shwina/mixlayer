@@ -3,27 +3,33 @@ from ..derivatives import dfdx, dfdy
 
 class SinhGrid(object):
 
-    def __init__(self, nx, ny, Lx, Ly, beta, bx, by):
+    def __init__(self, size, dims, boundaries, beta):
         """
         Creates a grid "stretched" in the y-direction with stretching function 'sinh(y)'.
 
         Parameters
         ----------
-        nx : int
-            Number of grid points in the x-direction
-        ny : int
-            Number of grid points in the y-direction
-        Lx : float
-            Grid length in x-direction
-        Ly : float
-            Grid length in y-direction
-        beta : stretching parameter
-            Extent of stretching (very small beta implies no stretching, more beta implies more stretching)
-        bx, by : mixlayer.derivatives.BoundaryType
-            Specify the way boundaries are treated in the x and y-directions.
+        size : int or tuple of int
+            tuple (Nx, Ny) specifying the number of grid points in each co-ordinate direction.
+        dims : float or tuple of float
+            tuple (Lx, Ly) specifying the length of the grid in each co-ordinate direction.
+        boundaries: tuple of mixlayer.derivatives.BoundaryType
+            Tuple (bx, by) specifying the way boundaries are treated in each co-ordinate direction.
                 BoundaryType.INNER : inner stencils used on the boundary)
                 BoundaryType.PERIODIC : domain wraps around itself in this direction).
+        beta : stretching parameter
+            Extent of stretching (very small beta implies no stretching, more beta implies more stretching).
         """
+        if np.isscalar(size):
+            nx = ny = size
+        else:
+            nx, ny = size
+        if np.isscalar(dims):
+            Lx = Ly = dims
+        else:
+            Lx, Ly = dims
+        bx, by = boundaries
+
         dx = Lx/(nx-1)
         dn = 1./(ny-1)
         x = np.arange(nx)*dx*np.ones([ny, nx])

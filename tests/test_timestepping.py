@@ -6,12 +6,11 @@ class TestRK4:
 
     def setup(self):
         fields = np.ones([4, 10, 10], dtype=np.float64)
-
-        def rhs(out=None):
-            out[...] = np.ones([4, 10, 10], dtype=np.float64)
-
+        rhs = np.zeros_like(fields)
+        def compute_rhs():
+            rhs[...] = np.ones([4, 10, 10], dtype=np.float64)
         self.fields = fields
-        self.stepper = RK4(fields, rhs)
+        self.stepper = RK4(fields, rhs, compute_rhs)
 
     def test_take_step_zero_length(self):
         self.stepper.step(0)

@@ -18,8 +18,9 @@ class RK4:
 
     """
 
-    def __init__(self, U, rhs_func, *rhs_func_args):
+    def __init__(self, U, rhs, rhs_func, *rhs_func_args):
         self.U = U
+        self.rhs = rhs
         self.rhs_func = rhs_func
         self.rhs_func_args = rhs_func_args
         self._allocate_arrays()
@@ -44,7 +45,7 @@ class RK4:
         for h, k in zip(hi, ki):
 
             # first compute RHS
-            self.rhs_func(*self.rhs_func_args, out=self.rhs)
+            self.rhs_func(*self.rhs_func_args)
 
             # then update U, U1
             self.U[...] = self.U0 + h*self.rhs
@@ -52,7 +53,7 @@ class RK4:
 
         h = (dt/6)
 
-        self.rhs_func(*self.rhs_func_args, out=self.rhs)
+        self.rhs_func(*self.rhs_func_args)
 
         self.U[...] = self.U0 + self.U1 + h*self.rhs
 
@@ -62,4 +63,3 @@ class RK4:
         """
         self.U0 = np.copy(self.U)
         self.U1 = np.copy(self.U)
-        self.rhs = np.zeros_like(self.U)
