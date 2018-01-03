@@ -128,11 +128,9 @@ def non_reflecting_boundary_conditions():
         d_2 * (prs + egy) / (rho*C_sound**2) -
         rho * (rho_v/rho * d_4 + rho_u/rho * d_3))[-1, :]
 
-def rhs_func():
+def update_temperature_and_pressure():
     tmp[...] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho) / (rho*eos.Cv)
     eos.get_pressure(tmp, rho, prs)
-    solver.computeRHS()
-    non_reflecting_boundary_conditions()
 
 # grid dimensions
 N = 144
@@ -207,10 +205,9 @@ rho_v += rho*v_pert
 egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*eos.Cv*tmp
 
 # make solver
-solver = NoChemistrySolver(grid, U, rhs, tmp, prs, mu, kappa)
-
-# make time stepper
-stepper = RK4(U, rhs, rhs_func)
+solver = NoChemistrySolver(grid, U, rhs, tmp, prs, mu, kappa, RK4)
+solver.set_rhs_pre_func(update_temperature_and_pressure)
+solver.set_rhs_post_func(non_reflecting_boundary_conditions)
 
 # run simulation
 import timeit
@@ -221,7 +218,7 @@ for i in range(timesteps):
 
     print("Iteration: {:10d}    Time: {:15.10e}    Total energy: {:15.10e}".format(i, dt*i, np.sum(egy)))
 
-    stepper.step(dt)
+    solver.step(dt)
     apply_filter()
 
     if writer:

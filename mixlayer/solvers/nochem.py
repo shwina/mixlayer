@@ -2,7 +2,7 @@ import numpy as np
 
 class NoChemistrySolver:
 
-    def __init__(self, grid, U, rhs, tmp, prs, mu, kappa):
+    def __init__(self, grid, U, rhs, tmp, prs, mu, kappa, timestepping_scheme):
         self.grid = grid
         self.U = U
         self.rhs = rhs
@@ -10,8 +10,16 @@ class NoChemistrySolver:
         self.prs = prs
         self.mu = mu
         self.kappa = kappa
-    
-    def computeRHS(self):
+        self.timestepping_scheme = timestepping_scheme
+ 
+        self.rhs_pre_func = None
+        self.rhs_post_func = None
+
+        self.stepper = timestepping_scheme(U, rhs, self.compute_rhs)
+
+    def compute_rhs(self):
+
+        if self.rhs_pre_func : self.rhs_pre_func(*self.rhs_pre_func_args)
 
         dfdx, dfdy = self.grid.dfdx, self.grid.dfdy
         rho, rho_u, rho_v, egy = self.U
@@ -55,3 +63,16 @@ class NoChemistrySolver:
                     kappa*(
                         dfdx(dfdx(tmp)) +
                         dfdy(dfdy(tmp))))
+
+        if self.rhs_post_func : self.rhs_post_func(*self.rhs_post_func_args)
+
+    def set_rhs_pre_func(self, func, *args):
+        self.rhs_pre_func = func
+        self.rhs_pre_func_args = args
+
+    def set_rhs_post_func(self, func, *args):
+        self.rhs_post_func = func
+        self.rhs_post_func_args = args
+
+    def step(self, dt):
+        self.stepper.step(dt)
