@@ -1,3 +1,7 @@
+"""
+2-d compressible flow without chemistry.
+"""
+
 import numpy as np
 
 class NoChemistrySolver:

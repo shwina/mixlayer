@@ -5,6 +5,7 @@ Classes
 -------
 
 - `RK4` -- 4th order Runge-Kutta time-stepping
+
 """
 
 import numpy as np
@@ -16,6 +17,17 @@ class RK4:
     Parameters
     ----------
 
+    U : array_like
+        Function values
+
+    rhs : array_like
+        Space for storing right-hand sides
+
+    rhs_func : array_like
+        Function that computes the right-hand sides and stores them in RHS
+
+    *rhs_func_args
+        Inputs to rhs_func
     """
 
     def __init__(self, U, rhs, rhs_func, *rhs_func_args):
@@ -27,7 +39,7 @@ class RK4:
 
     def step(self, dt):
         """
-        Take a time-step of "dt" and update fields.
+        Take a time step of "dt" and update fields.
 
         Parameters
         ----------
@@ -58,8 +70,5 @@ class RK4:
         self.U[...] = self.U0 + self.U1 + h*self.rhs
 
     def _allocate_arrays(self):
-        """
-        Allocate extra storage for field vectors
-        """
         self.U0 = np.copy(self.U)
         self.U1 = np.copy(self.U)
