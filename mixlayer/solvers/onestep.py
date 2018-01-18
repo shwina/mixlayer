@@ -1,8 +1,9 @@
 """
 2-d compressible flow without one-step chemistry.
 """
-
 import numpy as np
+
+from mixlayer.constants import *
 from mixlayer.filtering.explicit import filter5
 
 class OneStepSolver:
@@ -97,11 +98,7 @@ class OneStepSolver:
             rho_yi_rhs_y[[0, -1], :] = 0
             rho_yi_rhs[...] = rho_yi_rhs_x + rho_yi_rhs_y
 
-
-
         # species equation source terms:
-        universal_gas_constant = 8314
-
         reaction_rate = arrhenius_coefficient * rho * np.exp(
                 -activation_energy/(universal_gas_constant*tmp))
         rho_y1_rhs[...] -= reaction_rate*(rho_y1*rho_y2*molwt_3/molwt_2)/rho**2

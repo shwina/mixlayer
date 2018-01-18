@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import h5py
 
+from mixlayer.constants import *
 from mixlayer.solvers.onestep import OneStepSolver
 from mixlayer.derivatives import BoundaryType
 from mixlayer.grid.mapped import SinhGrid
@@ -145,8 +146,17 @@ def update_temperature_and_pressure():
     tmp[...] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho) / (rho*Cv)
     eos.get_pressure(tmp, rho, prs)
 
+    xy = 1 - y1 - y2 - y3
+    U[4][ y1 > 0.5 ] += (rho*xy) [ y1 > 0.5 ]
+    U[5][ y1 < 0.5 ] += (rho*xy) [ y1 < 0.5 ]
+
+    # ensure that mass fractions are 0 <= y <= 1
+    for rho_yi in U[4:]:
+        rho_yi [rho_yi < 0] = 0.
+        rho_yi [rho_yi > rho] = rho [rho_yi > rho]
+
 # grid dimensions
-N = 145
+N = 144
 Lx = 1
 Ly = Lx*((N-1)/N)*2.
 grid_beta = 5
@@ -157,7 +167,7 @@ Ma = 0.35
 Re = 400
 Pr = 0.697
 nperiod = 8 # number of perturbation wavelengths        
-timesteps = 10000
+timesteps = 20000
 writer = True
 Famp_2d = 0.4
 
@@ -176,20 +186,21 @@ y2_inf2 = 1
 T_ref = T_inf2
 
 # fuel, air and product properties:
-universal_gas_constant = 8314
 rratio = 1
 
 # hexane
+T_prop = 345.
+
 molwt_1 = 86.178
 R1 = universal_gas_constant/molwt_1
-Cp1 = -51.31 + 6.767*T_ref - 3.623e-3*T_ref**2
+Cp1 = -51.31 + 6.767*T_prop - 3.623e-3*T_prop**2
 Cv1 = Cp1 - R1
 
 # air
 molwt_2 = 28.97
 R2 = universal_gas_constant/molwt_2
-Cp2 = Pr*(3.227e-3 + 8.389e-5*T_ref - 1.985e-8*T_ref**2)/(
-        6.109e-6 + 4.606e-8*T_ref - 1.051e-11*T_ref**2)
+Cp2 = Pr*(3.227e-3 + 8.389e-5*T_prop - 1.985e-8*T_prop**2)/(
+        6.109e-6 + 4.606e-8*T_prop - 1.051e-11*T_prop**2)
 Cv2 = Cp2 - R2
 
 # product
@@ -224,8 +235,7 @@ U_ref = U_inf1-U_inf2
 # viscosity; thermal and molecular diffusivities
 disturbance_wavelength = Lx/nperiod
 vorticity_thickness = disturbance_wavelength/7.29
-rho_ref = (rho_inf1+rho_inf2)/2.0
-mu = (rho_ref*(U_inf1-U_inf2)*vorticity_thickness)/Re
+mu = (rho_ref*U_ref*vorticity_thickness)/Re
 kappa = 0.5*(Cp1+Cp2)*mu/Pr 
 gamma = mu/(rho_ref*Pr)
 
@@ -279,6 +289,7 @@ rho_y3[...] = rho * y3
 # equation of state:
 eos = IdealGasEOS(Cp, Cv, R)
 
+
 # reaction parameters
 Da = 10.
 Da_T_flame = 1.0
@@ -304,10 +315,6 @@ solver.set_rhs_post_func(non_reflecting_boundary_conditions)
 # run simulation
 import timeit
 
-x, y = np.meshgrid(np.linspace(0, 1, 145), np.linspace(0, 1, 145))
-plt.streamplot(x, y, rho_u, rho_v)
-plt.show()
-
 for i in range(timesteps):
  
     dt = calculate_timestep()
@@ -321,7 +328,7 @@ for i in range(timesteps):
     print(ytest.min(), ytest.max())
 
     if writer:
-        if i%200 == 0:
+        if i%50 == 0:
             outfile = h5py.File("{:05d}.hdf5".format(i))
             outfile.create_group("fields")
             outfile.create_dataset("fields/rho", data=rho)
