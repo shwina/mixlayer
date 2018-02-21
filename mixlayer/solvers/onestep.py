@@ -1,5 +1,5 @@
 """
-2-d compressible flow without one-step chemistry.
+2-d compressible flow with one-step chemistry.
 """
 import numpy as np
 
@@ -101,14 +101,12 @@ class OneStepSolver:
         # species equation source terms:
         reaction_rate = arrhenius_coefficient * rho * np.exp(
                 -activation_energy/(universal_gas_constant*tmp))
-        rho_y1_rhs[...] -= reaction_rate*(rho_y1*rho_y2*molwt_3/molwt_2)/rho**2
-        rho_y2_rhs[...] -= rratio*reaction_rate*(rho_y1*rho_y2*molwt_3/molwt_1)/rho**2
-        rho_y3_rhs[...] += (1+rratio)*reaction_rate*rho_y1*rho_y2*(
-                molwt_3/molwt_1)*(molwt_3/molwt_2)/rho**2
+        rho_y1_rhs[...] -= molwt_1 * reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
+        rho_y2_rhs[...] -= molwt_2 * rratio*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
+        rho_y3_rhs[...] += molwt_3 * (1+rratio)*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
 
         # energy equation source term:
-        egy_rhs[...] -= enthalpy_of_formation*(1+rratio)*reaction_rate*(
-                rho_y1*rho_y2*(molwt_3/molwt_1)*(molwt_3/molwt_2))/rho**2
+        egy_rhs[...] -= enthalpy_of_formation*(1+rratio)*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
 
         if self.rhs_post_func : self.rhs_post_func(*self.rhs_post_func_args)
 
