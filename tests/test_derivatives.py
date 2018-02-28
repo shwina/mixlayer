@@ -1,6 +1,6 @@
 import numpy as np
 from numpy.testing import assert_equal, assert_allclose
-from mixlayer.derivatives import dfdx, dfdy, BoundaryType
+from mixlayer.derivatives import dfdx, dfdy, BoundaryConditionType
 
 def test_dfdx():
     x, y = np.meshgrid(np.linspace(0, 2*np.pi),
@@ -9,13 +9,13 @@ def test_dfdx():
     
     z = x**2
 
-    dzdx = dfdx(z, dx, boundary_type=BoundaryType.INNER)
+    dzdx = dfdx(z, dx, bc_type=BoundaryConditionType.INNER)
     assert_allclose(dzdx, 2*x)
 
     x = x[:, :-1]
     z = np.sin(x)
 
-    dzdx = dfdx(z, dx, boundary_type=BoundaryType.PERIODIC)
+    dzdx = dfdx(z, dx, bc_type=BoundaryConditionType.PERIODIC)
     assert_allclose(dzdx, np.cos(x))
 
 def test_dfdy():
@@ -25,12 +25,12 @@ def test_dfdy():
     
     z = y**2
 
-    dzdy = dfdy(z, dy, boundary_type=BoundaryType.INNER)
+    dzdy = dfdy(z, dy, bc_type=BoundaryConditionType.INNER)
     assert_allclose(dzdy, 2*y)
 
     y = y[:-1, :]
     z = np.sin(y)
 
-    dzdy = dfdy(z, dy, boundary_type=BoundaryType.PERIODIC)
+    dzdy = dfdy(z, dy, bc_type=BoundaryConditionType.PERIODIC)
     assert_allclose(dzdy, np.cos(y))
 

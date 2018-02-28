@@ -4,7 +4,7 @@ import h5py
 
 from mixlayer.constants import *
 from mixlayer.solvers.onestep import OneStepSolver
-from mixlayer.derivatives import BoundaryType
+from mixlayer.derivatives import BoundaryConditionType
 from mixlayer.grid.mapped import SinhGrid
 from mixlayer.timestepping import RK4
 from mixlayer.models.eos import IdealGasEOS
@@ -160,7 +160,7 @@ N = 144
 Lx = 1
 Ly = Lx*((N-1)/N)*2.
 grid_beta = 5
-grid = SinhGrid(N, (Lx, Ly), (BoundaryType.PERIODIC, BoundaryType.INNER), grid_beta)
+grid = SinhGrid(N, (Lx, Ly), (BoundaryConditionType.PERIODIC, BoundaryConditionType.INNER), grid_beta)
 
 # simulation control
 Ma = 0.35

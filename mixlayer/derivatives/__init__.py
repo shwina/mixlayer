@@ -1,1 +1,2 @@
-from .derivatives import dfdx, dfdy, BoundaryType
+from .derivatives import dfdx, dfdy
+from .boundaries import BoundaryConditionType
