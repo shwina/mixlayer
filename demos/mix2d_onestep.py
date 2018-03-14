@@ -8,6 +8,9 @@ from mixlayer.derivatives import BoundaryType
 from mixlayer.grid.mapped import SinhGrid
 from mixlayer.timestepping import RK4
 from mixlayer.models.eos import IdealGasEOS
+from mixlayer.models.transport import TransportModel
+from mixlayer.models.thermodynamics import hConstThermodynamicsModel
+from mixlayer.models.species import Species
 from mixlayer.poisson import PoissonSolver
 
 def add_forcing():
@@ -78,7 +81,7 @@ def calculate_timestep():
 def non_reflecting_boundary_conditions():
 
     dfdx, dfdy = grid.dfdx, grid.dfdy
-    C_sound = np.sqrt(Cp/Cv * R*tmp)
+    C_sound = np.sqrt(mixture.Cp(prs, tmp)/mixture.Cv(prs, tmp) * mixture.R *tmp)
 
     dpdy = dfdy(prs)
     drhody = dfdy(rho)
@@ -137,14 +140,11 @@ def non_reflecting_boundary_conditions():
     rho_y3_rhs[-1, :] = (rho_y3_rhs - rho_y3/rho*d_1 - rho*d_7)[-1, :]
 
 def update_temperature_and_pressure():
-    y1 = U[4]/U[0]
-    y2 = U[5]/U[0]
-    y3 = U[6]/U[0]
-    Cp[...] = y1*Cp1 + y2*Cp2 + y3*Cp3
-    Cv[...] = y1*Cv1 + y2*Cv2 + y3*Cv3
-    R[...] = y1*R1 + y2*R2 + y3*R3
-    tmp[...] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho) / (rho*Cv)
-    eos.get_pressure(tmp, rho, prs)
+    y1[...] = U[4]/U[0]
+    y2[...] = U[5]/U[0]
+    y3[...] = U[6]/U[0]
+    tmp[...] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho) / (rho*mixture.Cv(prs, tmp))
+    prs[...] = eos.P(rho, tmp)
 
     xy = 1 - y1 - y2 - y3
     U[4][ y1 > 0.5 ] += (rho*xy) [ y1 > 0.5 ]
@@ -188,35 +188,41 @@ T_ref = T_inf2
 # fuel, air and product properties:
 rratio = 1
 
-# hexane
+# equation of state:
+eos = IdealGasEOS()
 T_prop = 345.
 
-molwt_1 = 86.178
-R1 = universal_gas_constant/molwt_1
-Cp1 = -51.31 + 6.767*T_prop - 3.623e-3*T_prop**2
-Cv1 = Cp1 - R1
+hexane = Species(
+    'hexane',
+    86.178,
+    thermodynamics_model=hConstThermodynamicsModel(
+        -51*31 + 6.767*T_prop - 3.623e-3*T_prop**2,
+            0),
+    gas_model=IdealGasEOS)
 
-# air
-molwt_2 = 28.97
-R2 = universal_gas_constant/molwt_2
-Cp2 = Pr*(3.227e-3 + 8.389e-5*T_prop - 1.985e-8*T_prop**2)/(
-        6.109e-6 + 4.606e-8*T_prop - 1.051e-11*T_prop**2)
-Cv2 = Cp2 - R2
+air = Species(
+    'air',
+    29.87,
+    thermodynamics_model=hConstThermodynamicsModel(
+        Pr*(3.227e-3 + 8.389e-5*T_prop - 1.985e-8*T_prop**2)/(
+        6.109e-6 + 4.606e-8*T_prop - 1.051e-11*T_prop**2)),
+    gas_model=IdealGasEOS)
 
-# product
-molwt_3 = (molwt_1 + rratio*molwt_2)/(1+rratio)
-R3 = universal_gas_constant/molwt_3
-Cv3 = (Cv1*molwt_1 + rratio*Cv2*molwt_2)/(
-        (1+rratio)*molwt_3)
-Cp3 = Cv3 + R3
+products = Species(
+    'products',
+    (hexane.molecular_weight + rratio*air.molecular_weight)/(1+rratio),
+    thermodynamics_model=hConstThermodynamicsModel(
+        (1*hexane.Cp(0, 0)*hexane.molecular_weight + rratio*air.Cp(0, 0)*air.molecular_weight)/(
+            hexane.molecular_weight + rratio*air.molecular_weight)),
+    gas_model=IdealGasEOS())
 
 # free stream thermodynamic properties
-Cp_inf1 = y1_inf1*Cp1 + y2_inf1*Cp2
-Cv_inf1 = y1_inf1*Cv1 + y2_inf1*Cv2
-R_inf1 =  y1_inf1*R1  + y2_inf1*R2
-Cp_inf2 = y1_inf2*Cp1 + y2_inf2*Cp2
-Cv_inf2 = y1_inf2*Cv1 + y2_inf2*Cv2
-R_inf2 =  y1_inf2*R1 + y2_inf2*R2
+Cp_inf1 = y1_inf1*hexane.Cp(0, 0) + y2_inf1*air.Cp(0, 0)
+Cv_inf1 = y1_inf1*hexane.Cv(0, 0) + y2_inf1*air.Cv(0, 0)
+R_inf1 =  y1_inf1*hexane.R  + y2_inf1*air.R
+Cp_inf2 = y1_inf2*hexane.Cp(0, 0) + y2_inf2*air.Cp(0, 0)
+Cv_inf2 = y1_inf2*hexane.Cv(0, 0) + y2_inf2*air.Cv(0, 0)
+R_inf2 =  y1_inf2*hexane.R + y2_inf2*air.R
 
 # reference density
 rho_inf1 = P_inf/(R_inf1*T_inf1)
@@ -229,15 +235,14 @@ C_sound_inf2 = np.sqrt(Cp_inf2/Cv_inf2 * R_inf2*T_inf2)
 U_inf1 = 2*Ma*C_sound_inf1/(
         1+np.sqrt(rho_inf1/rho_inf2)*(C_sound_inf1/C_sound_inf2))
 U_inf2 = -np.sqrt(rho_inf1/rho_inf2)*U_inf1
-print(U_inf1, U_inf2)
 U_ref = U_inf1-U_inf2
 
 # viscosity; thermal and molecular diffusivities
 disturbance_wavelength = Lx/nperiod
 vorticity_thickness = disturbance_wavelength/7.29
 mu = (rho_ref*U_ref*vorticity_thickness)/Re
-kappa = 0.5*(Cp1+Cp2)*mu/Pr 
-gamma = mu/(rho_ref*Pr)
+kappa = 0.5*(mixture.Cp(P_inf, T_ref)*hexane.mu(P_inf, T_ref)/hexane.Pr(P_inf, T_ref))
+gamma = hexane.mu/(rho_ref*hexane.Pr)
 
 # fields
 dims = (N, N)
@@ -263,11 +268,9 @@ y1 = (-1+2*ymix) * (ymix > 0.5)
 y2 = ( 1-2*ymix) * (ymix <= 0.5)
 y3 = 1 - y1 - y2
 
-Cp[...] = y1*Cp1 + y2*Cp2 + y3*Cp3
-Cv[...] = y1*Cv1 + y2*Cv2 + y3*Cv3
-R[...] = y1*R1 + y2*R2 + y3*R3
+mixture = Mixture([hexane, air, products], [y1, y2, y3])
 
-rho[:, :] = P_inf/(R*tmp[:, :])
+rho[:, :] = P_inf/(mixture.R*tmp[:, :])
 
 print(P_inf)
 
@@ -280,15 +283,11 @@ u_pert, v_pert = add_forcing()
 rho_u += rho*u_pert
 rho_v += rho*v_pert
 
-egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*Cv*tmp
+egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*mixture.Cv(prs, tmp)*tmp
 
 rho_y1[...] = rho * y1
 rho_y2[...] = rho * y2
 rho_y3[...] = rho * y3
-
-# equation of state:
-eos = IdealGasEOS(Cp, Cv, R)
-
 
 # reaction parameters
 Da = 10.

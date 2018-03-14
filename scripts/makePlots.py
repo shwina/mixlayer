@@ -14,7 +14,7 @@ for fname in sorted(glob.glob("*.hdf5")):
     except OSError:
         print("unable to read file")
         continue
-    field = f['fields/rho_y2']
+    field = f['fields/tmp']
     max_val.append(field[...].max())
     min_val.append(field[...].min())
     f.close()
@@ -25,7 +25,7 @@ for fname in sorted(glob.glob("*.hdf5")):
     except OSError:
         print("unable to read file")
         continue
-    field = f['fields/rho_y2']
+    field = f['fields/tmp']
     plt.imshow(field, cmap='hot', vmin=min(min_val), vmax=max(max_val))
     plt.colorbar()
     plt.savefig(fname.replace('hdf5', 'png'))

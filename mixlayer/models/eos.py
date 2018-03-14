@@ -1,11 +1,16 @@
 import numpy as np
 
 class IdealGasEOS(object):
+    def __init__(self):
+        pass
 
-    def __init__(self, Cp, Cv, R):
-        self.Cp = Cp
-        self.Cv = Cv
-        self.R = R
+    @classmethod
+    def CpMCv(self, species, p, T):
+        return species.R
 
-    def get_pressure(self, temperature, density, out):
-        out[...] = density*self.R*temperature
+    def P(self, species, rho, T):
+        return rho * species.R * T
+
+class SolidSpecies(object):
+    def __init__(self, species):
+        pass

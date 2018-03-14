@@ -1,0 +1,10 @@
+Iteration:          0    Time: 0.0000000000e+00    Total energy: 5.5400798086e+09
+Iteration:          1    Time: 6.5173765450e-06    Total energy: 5.5400797513e+09
+Iteration:          2    Time: 1.3037035090e-05    Total energy: 5.5400796642e+09
+Iteration:          3    Time: 1.9559634608e-05    Total energy: 5.5400795462e+09
+Iteration:          4    Time: 2.6085019542e-05    Total energy: 5.5400793966e+09
+Iteration:          5    Time: 3.2612916311e-05    Total energy: 5.5400792151e+09
+Iteration:          6    Time: 3.9142922210e-05    Total energy: 5.5400790013e+09
+Iteration:          7    Time: 4.5669276480e-05    Total energy: 5.5400787548e+09
+Iteration:          8    Time: 5.2186520983e-05    Total energy: 5.5400784754e+09
+Iteration:          9    Time: 5.8702956897e-05    Total energy: 5.5400781632e+09
