@@ -7,6 +7,9 @@ from mixlayer.grid.mapped import SinhGrid
 from mixlayer.timestepping import RK4
 from mixlayer.filtering import filter5
 from mixlayer.models.eos import IdealGasEOS
+from mixlayer.models.transport import TransportModel
+from mixlayer.models.thermodynamics import hConstThermodynamicsModel
+from mixlayer.models.species import Species
 from mixlayer.poisson import PoissonSolver
 
 def add_forcing():
@@ -61,11 +64,11 @@ def calculate_timestep():
     # calculate diffusivities:
     alpha_1 = gamma
     alpha_2 = mu/rho
-    alpha_3 = kappa/(eos.Cp*rho)
+    alpha_3 = kappa/(specie.Cp(prs, tmp)*rho)
     alpha_max = np.maximum(np.maximum(alpha_1, alpha_2), alpha_3)
 
     # calculate C_sound
-    C_sound = np.sqrt(eos.Cp/eos.Cv*eos.R*tmp)
+    C_sound = np.sqrt(specie.Cp(prs, tmp)/specie.Cv(prs, tmp)*specie.R*tmp)
     test_1 = cfl_vel*grid.dx/(C_sound + abs(rho_u/rho))
     test_2 = cfl_vel*grid.dy/(C_sound + abs(rho_v/rho))
     test_3 = cfl_visc*(dxmin**2)/alpha_max
@@ -80,7 +83,8 @@ def apply_filter():
 def non_reflecting_boundary_conditions():
 
     dfdx, dfdy = grid.dfdx, grid.dfdy
-    C_sound = np.sqrt(eos.Cp/eos.Cv * eos.R*tmp)
+    C_sound = np.sqrt(specie.Cp(prs, tmp)/specie.Cv(prs, tmp) * specie.R*tmp)
+
 
     dpdy = dfdy(prs)
     drhody = dfdy(rho)
@@ -124,8 +128,8 @@ def non_reflecting_boundary_conditions():
         rho * (rho_v/rho * d_4 + rho_u/rho * d_3))[-1, :]
 
 def update_temperature_and_pressure():
-    tmp[...] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho) / (rho*eos.Cv)
-    eos.get_pressure(tmp, rho, prs)
+    tmp[...] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho) / (rho*specie.Cv(prs, tmp))
+    prs[...] = eos.P(specie, rho, tmp)
 
 # grid dimensions
 N = 144
@@ -152,16 +156,22 @@ T_inf2 = 300.
 T_ref = max([T_inf2, 344.6])
 
 # equation of state
-eos = IdealGasEOS(1005, 718, 287)
+eos = IdealGasEOS()
+specie = Species(
+    'air',
+    29.87,
+    thermodynamics_model=hConstThermodynamicsModel(1005., 0),
+    gas_model=IdealGasEOS)
 
 # reference density
-rho_ref1 = P_inf/(eos.R*T_inf1)
-rho_ref2 = P_inf/(eos.R*T_inf2)
+rho_ref1 = P_inf/(specie.R*T_inf1)
+rho_ref2 = P_inf/(specie.R*T_inf2)
 rho_ref = (rho_ref1+rho_ref2)/2.0
 
 # reference velocities 
-C_sound1 = np.sqrt((eos.Cp/eos.Cv)*(eos.R)*T_inf1)
-C_sound2 = np.sqrt((eos.Cp/eos.Cv)*(eos.R)*T_inf2)
+CpBCv = specie.Cp(P_inf, T_ref) / specie.Cv(P_inf, T_ref)
+C_sound1 = np.sqrt(CpBCv * specie.R * T_inf1)
+C_sound2 = np.sqrt(CpBCv * specie.R * T_inf2)
 U_inf1 = 2*Ma*C_sound1/(1+np.sqrt(rho_ref1/rho_ref2)*(C_sound1/C_sound2))
 U_inf2 = -np.sqrt(rho_ref1/rho_ref2)*U_inf1
 U_ref = U_inf1-U_inf2
@@ -171,8 +181,11 @@ disturbance_wavelength = Lx/nperiod
 vorticity_thickness = disturbance_wavelength/7.29
 rho_ref = (rho_ref1+rho_ref2)/2.0
 mu = (rho_ref*(U_inf1-U_inf2)*vorticity_thickness)/Re
-kappa = 0.5*(eos.Cp+eos.Cp)*mu/Pr 
+kappa = specie.Cp(P_inf, T_ref) * mu / Pr 
 gamma = mu/(rho_ref*Pr)
+
+# thermophysical properties:
+specie.transport_model = TransportModel(mu, Pr)
 
 # fields
 dims = (N, N)
@@ -187,7 +200,7 @@ prs = np.zeros(dims, dtype=np.float64)
 weight = np.tanh(np.sqrt(np.pi)*grid.y/vorticity_thickness)
 
 tmp[:, :] = T_inf2 + (weight+1)/2.*(T_inf1-T_inf2)
-rho[:, :] = P_inf/(eos.R*tmp[:, :])
+rho[:, :] = P_inf/(specie.R*tmp[:, :])
 
 rho_u[:, :] = rho*(U_inf2+(weight+1)/2.*(U_inf1-U_inf2))
 rho_v[:, :] = 0.0
@@ -197,7 +210,7 @@ u_pert, v_pert = add_forcing()
 rho_u += rho*u_pert
 rho_v += rho*v_pert
 
-egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*eos.Cv*tmp
+egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*specie.Cv(prs, tmp)*tmp
 
 # make solver
 solver = NoChemistrySolver(grid, U, rhs, tmp, prs, mu, kappa, RK4)
