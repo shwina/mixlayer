@@ -8,19 +8,17 @@ from mixlayer.filtering.explicit import filter5
 
 class OneStepSolver:
 
-    def __init__(self, grid, U, rhs, tmp, prs, mu, kappa, gamma,
+    def __init__(self, mixture, grid, U, rhs, tmp, prs,
             arrhenius_coefficient, activation_energy, rratio, enthalpy_of_formation,
             molwt_1, molwt_2, molwt_3,
             timestepping_scheme):
 
+        self.mixture = mixture
         self.grid = grid
         self.U = U
         self.rhs = rhs
         self.tmp = tmp
         self.prs = prs
-        self.mu = mu
-        self.kappa = kappa
-        self.gamma = gamma
         self.arrhenius_coefficient = arrhenius_coefficient
         self.activation_energy = activation_energy
         self.rratio = rratio
@@ -43,7 +41,6 @@ class OneStepSolver:
         rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
         rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y1_rhs, rho_y2_rhs, rho_y3_rhs = self.rhs
         tmp, prs = self.tmp, self.prs
-        mu, kappa, gamma = self.mu, self.kappa, self.gamma
         arrhenius_coefficient = self.arrhenius_coefficient
         activation_energy = self.activation_energy
         rratio = self.rratio
@@ -51,6 +48,9 @@ class OneStepSolver:
         molwt_1 = self.molwt_1
         molwt_2 = self.molwt_2
         molwt_3 = self.molwt_3
+
+        mu = self.mixture.mu(prs, tmp)
+        kappa = self.mixture.kappa(prs, tmp)
 
         # euler terms:
         rho_rhs[...] = -dfdy(rho_v)
@@ -90,11 +90,12 @@ class OneStepSolver:
                         dfdy(dfdy(tmp))))
 
         # species equation convection and diffusion terms:
-        for rho_yi, rho_yi_rhs in zip(self.U[4:], self.rhs[4:]):
+        for i, (rho_yi, rho_yi_rhs) in enumerate(zip(self.U[4:], self.rhs[4:])):
+            D = self.mixture.D(i, tmp, prs)
             rho_yi_rhs_x = dfdx(-rho_u*rho_yi/rho +
-                    rho*gamma*dfdx(-rho_yi/rho))
+                    rho*D*dfdx(-rho_yi/rho))
             rho_yi_rhs_y = dfdy(-rho_v*rho_yi/rho +
-                    rho*gamma*dfdy(-rho_yi/rho))
+                    rho*D*dfdy(-rho_yi/rho))
             rho_yi_rhs_y[[0, -1], :] = 0
             rho_yi_rhs[...] = rho_yi_rhs_x + rho_yi_rhs_y
 

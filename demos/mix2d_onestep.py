@@ -7,10 +7,12 @@ from mixlayer.solvers.onestep import OneStepSolver
 from mixlayer.derivatives import BoundaryConditionType
 from mixlayer.grid.mapped import SinhGrid
 from mixlayer.timestepping import RK4
-from mixlayer.models.eos import IdealGasEOS
-from mixlayer.models.transport import TransportModel
-from mixlayer.models.thermodynamics import hConstThermodynamicsModel
-from mixlayer.models.species import Species
+from mixlayer.models.species import *
+from mixlayer.models.mixture import *
+from mixlayer.models.thermodynamics import *
+from mixlayer.models.transport import *
+from mixlayer.models.eos import *
+
 from mixlayer.poisson import PoissonSolver
 
 def add_forcing():
@@ -64,13 +66,13 @@ def calculate_timestep():
     dxmin = np.minimum(grid.dx, grid.dy)
 
     # calculate diffusivities:
-    alpha_1 = gamma
-    alpha_2 = mu/rho
-    alpha_3 = kappa/(Cp*rho)
+    alpha_1 = mixture.D(0, P_inf, T_ref)
+    alpha_2 = mixture.mu(P_inf, T_ref)/rho
+    alpha_3 = mixture.kappa(P_inf, T_ref)/(mixture.Cp(P_inf, T_ref)*rho)
     alpha_max = np.maximum(np.maximum(alpha_1, alpha_2), alpha_3)
 
     # calculate C_sound
-    C_sound = np.sqrt(Cp/Cv*R*tmp)
+    C_sound = np.sqrt(mixture.Cp(P_inf, T_ref)/mixture.Cv(P_inf, T_ref)*mixture.R*tmp)
     test_1 = cfl_vel*grid.dx/(C_sound + abs(rho_u/rho))
     test_2 = cfl_vel*grid.dy/(C_sound + abs(rho_v/rho))
     test_3 = cfl_visc*(dxmin**2)/alpha_max
@@ -144,7 +146,7 @@ def update_temperature_and_pressure():
     y2[...] = U[5]/U[0]
     y3[...] = U[6]/U[0]
     tmp[...] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho) / (rho*mixture.Cv(prs, tmp))
-    prs[...] = eos.P(rho, tmp)
+    prs[...] = mixture.gas_model.P(rho, tmp)
 
     xy = 1 - y1 - y2 - y3
     U[4][ y1 > 0.5 ] += (rho*xy) [ y1 > 0.5 ]
@@ -189,32 +191,37 @@ T_ref = T_inf2
 rratio = 1
 
 # equation of state:
-eos = IdealGasEOS()
 T_prop = 345.
 
+# thermal conductivity, viscosity and mass diffusivity:
 hexane = Species(
     'hexane',
     86.178,
-    thermodynamics_model=hConstThermodynamicsModel(
-        -51*31 + 6.767*T_prop - 3.623e-3*T_prop**2,
-            0),
-    gas_model=IdealGasEOS)
+    specific_heat_model=SpeciesSpecificHeatModelConstant(
+        -51*31 + 6.767*T_prop - 3.623e-3*T_prop**2)
+)
+hexane.gas_model = SpeciesEOSIdealGas(hexane)
 
 air = Species(
     'air',
     29.87,
-    thermodynamics_model=hConstThermodynamicsModel(
+    specific_heat_model=SpeciesSpecificHeatModelConstant(
         Pr*(3.227e-3 + 8.389e-5*T_prop - 1.985e-8*T_prop**2)/(
-        6.109e-6 + 4.606e-8*T_prop - 1.051e-11*T_prop**2)),
-    gas_model=IdealGasEOS)
+            6.109e-6 + 4.606e-8*T_prop - 1.051e-11*T_prop**2)
+    )
+)
+air.gas_model = SpeciesEOSIdealGas(air)
 
 products = Species(
     'products',
     (hexane.molecular_weight + rratio*air.molecular_weight)/(1+rratio),
-    thermodynamics_model=hConstThermodynamicsModel(
-        (1*hexane.Cp(0, 0)*hexane.molecular_weight + rratio*air.Cp(0, 0)*air.molecular_weight)/(
-            hexane.molecular_weight + rratio*air.molecular_weight)),
-    gas_model=IdealGasEOS())
+    specific_heat_model=SpeciesSpecificHeatModelConstant(
+        (1*hexane.Cp(0, 0)*hexane.molecular_weight +
+         rratio*air.Cp(0, 0)*air.molecular_weight) / (
+         hexane.molecular_weight+rratio*air.molecular_weight)
+    )
+)
+products.gas_model = SpeciesEOSIdealGas(products)
 
 # free stream thermodynamic properties
 Cp_inf1 = y1_inf1*hexane.Cp(0, 0) + y2_inf1*air.Cp(0, 0)
@@ -241,8 +248,8 @@ U_ref = U_inf1-U_inf2
 disturbance_wavelength = Lx/nperiod
 vorticity_thickness = disturbance_wavelength/7.29
 mu = (rho_ref*U_ref*vorticity_thickness)/Re
-kappa = 0.5*(mixture.Cp(P_inf, T_ref)*hexane.mu(P_inf, T_ref)/hexane.Pr(P_inf, T_ref))
-gamma = hexane.mu/(rho_ref*hexane.Pr)
+kappa = 0.5*(hexane.Cp(P_inf, T_ref) + air.Cp(P_inf, T_ref)) * mu / Pr
+mass_diffusivity = mu/(rho_ref*Pr) # here Pr is the same as the Schmidt number
 
 # fields
 dims = (N, N)
@@ -252,9 +259,6 @@ rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = U
 rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y1_rhs, rho_y2_rhs, rho_y3_rhs = rhs
 tmp = np.zeros(dims, dtype=np.float64)
 prs = np.zeros(dims, dtype=np.float64)
-Cp = np.zeros(dims, dtype=np.float64)
-Cv = np.zeros(dims, dtype=np.float64)
-R = np.zeros(dims, dtype=np.float64)
 
 T_flame_0 = 600
 # initialize fields
@@ -268,7 +272,12 @@ y1 = (-1+2*ymix) * (ymix > 0.5)
 y2 = ( 1-2*ymix) * (ymix <= 0.5)
 y3 = 1 - y1 - y2
 
-mixture = Mixture([hexane, air, products], [y1, y2, y3])
+mixture = Mixture([hexane, air, products], [y1, y2, y3],
+    viscosity_model=MixtureViscosityModelConstant(mu),
+    thermal_conductivity_model=MixtureThermalConductivityModelConstant(kappa),
+    mass_diffusivity_model=MassDiffusivityModelConstant(mass_diffusivity))
+mixture.specific_heat_model=MixtureSpecificHeatModelMassWeighted(mixture)
+mixture.gas_model=MixtureEOSIdealGas(mixture)
 
 rho[:, :] = P_inf/(mixture.R*tmp[:, :])
 
@@ -305,9 +314,12 @@ arrhenius_coefficient = Da * (U_ref/vorticity_thickness) / np.exp(
 enthalpy_of_formation = -heat_release_parameter*Cp_inf2*T_ref
 
 # make solver
-solver = OneStepSolver(grid, U, rhs, tmp, prs, mu, kappa, gamma,
-        arrhenius_coefficient, activation_energy, rratio, enthalpy_of_formation,
-        molwt_1, molwt_2, molwt_3, RK4)
+solver = OneStepSolver(mixture, grid, U, rhs, tmp, prs,
+        arrhenius_coefficient, activation_energy,
+        rratio, enthalpy_of_formation,
+        hexane.molecular_weight,
+        air.molecular_weight,
+        products.molecular_weight, RK4)
 solver.set_rhs_pre_func(update_temperature_and_pressure)
 solver.set_rhs_post_func(non_reflecting_boundary_conditions)
 

@@ -1,16 +1,21 @@
 import numpy as np
 
-class IdealGasEOS(object):
-    def __init__(self):
-        pass
+class SpeciesEOSIdealGas(object):
+    def __init__(self, specie):
+        self.specie = specie
 
-    @classmethod
-    def CpMCv(self, species, p, T):
-        return species.R
+    def CpMCv(self, p, T):
+        return self.specie.R
 
-    def P(self, species, rho, T):
-        return rho * species.R * T
+    def P(self, rho, T):
+        return rho * self.specie.R * T
 
-class SolidSpecies(object):
-    def __init__(self, species):
-        pass
+class MixtureEOSIdealGas(object):
+    def __init__(self, mixture):
+        self.mixture = mixture
+
+    def CpMCv(self, p, T):
+        return self.mixture.R
+
+    def P(self, rho, T):
+        return rho * self.mixture.R * T
