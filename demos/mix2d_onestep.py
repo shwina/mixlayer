@@ -12,6 +12,7 @@ from mixlayer.models.mixture import *
 from mixlayer.models.thermodynamics import *
 from mixlayer.models.transport import *
 from mixlayer.models.eos import *
+from mixlayer.models.reaction import *
 
 from mixlayer.poisson import PoissonSolver
 
@@ -311,15 +312,16 @@ Ze = (1+heat_release_parameter)/heat_release_parameter*np.log(
 activation_energy = Ze * universal_gas_constant * T_ref
 arrhenius_coefficient = Da * (U_ref/vorticity_thickness) / np.exp(
         -activation_energy/(universal_gas_constant*T_flame))
-enthalpy_of_formation = -heat_release_parameter*Cp_inf2*T_ref
+
+products.enthalpy_of_formation = -heat_release_parameter*Cp_inf2*T_ref
+
+reaction = OneStepReaction(arrhenius_coefficient, activation_energy)
 
 # make solver
 solver = OneStepSolver(mixture, grid, U, rhs, tmp, prs,
-        arrhenius_coefficient, activation_energy,
-        rratio, enthalpy_of_formation,
-        hexane.molecular_weight,
-        air.molecular_weight,
-        products.molecular_weight, RK4)
+        reaction,
+        rratio,
+        RK4)
 solver.set_rhs_pre_func(update_temperature_and_pressure)
 solver.set_rhs_post_func(non_reflecting_boundary_conditions)
 

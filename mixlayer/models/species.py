@@ -5,7 +5,8 @@ class Species:
                  gas_model=None,
                  specific_heat_model=None,
                  thermal_conductivity_model=None,
-                 viscosity_model=None):
+                 viscosity_model=None,
+                 enthalpy_of_formation=0):
         """
         species_name : str
         molecular_weight : float
@@ -18,6 +19,7 @@ class Species:
         self.gas_model = gas_model
         self.specific_heat_model=specific_heat_model
         self.viscosity_model = viscosity_model
+        self.enthalpy_of_formation = 0
 
     def Cp(self, p, T):
         return self.specific_heat_model.Cp(p, T)

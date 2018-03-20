@@ -9,8 +9,7 @@ from mixlayer.filtering.explicit import filter5
 class OneStepSolver:
 
     def __init__(self, mixture, grid, U, rhs, tmp, prs,
-            arrhenius_coefficient, activation_energy, rratio, enthalpy_of_formation,
-            molwt_1, molwt_2, molwt_3,
+            reaction, rratio,
             timestepping_scheme):
 
         self.mixture = mixture
@@ -19,13 +18,13 @@ class OneStepSolver:
         self.rhs = rhs
         self.tmp = tmp
         self.prs = prs
-        self.arrhenius_coefficient = arrhenius_coefficient
-        self.activation_energy = activation_energy
+        self.arrhenius_coefficient = reaction.arrhenius_coefficient
+        self.activation_energy = reaction.activation_energy
         self.rratio = rratio
-        self.enthalpy_of_formation = enthalpy_of_formation
-        self.molwt_1 = molwt_1
-        self.molwt_2 = molwt_2
-        self.molwt_3 = molwt_3
+        self.molwt_1 = mixture.species_list[0].molecular_weight
+        self.molwt_2 = mixture.species_list[1].molecular_weight 
+        self.molwt_3 = mixture.species_list[2].molecular_weight 
+        self.enthalpy_of_formation = mixture.species_list[2].enthalpy_of_formation
         self.timestepping_scheme = timestepping_scheme
  
         self.rhs_pre_func = None
