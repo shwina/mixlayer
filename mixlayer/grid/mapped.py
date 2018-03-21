@@ -53,6 +53,8 @@ class SinhGrid(object):
         self.dx = dx
         self.dy = dy
         self.dn = dn
+        self.Lx = Lx
+        self.Ly = Ly
         self.dndy = dndy
         self.d2ndy2 = d2ndy2
         self.bx = bx

@@ -62,8 +62,6 @@ def calculate_timestep():
     cfl_vel = 0.5
     cfl_visc = 0.1
 
-    update_temperature_and_pressure()
-
     dxmin = np.minimum(grid.dx, grid.dy)
 
     # calculate diffusivities:
@@ -80,83 +78,6 @@ def calculate_timestep():
 
     dt = np.min(np.minimum(np.minimum(test_1, test_2), test_3))
     return dt
-
-def non_reflecting_boundary_conditions():
-
-    dfdx, dfdy = grid.dfdx, grid.dfdy
-    C_sound = np.sqrt(mixture.Cp(prs, tmp)/mixture.Cv(prs, tmp) * mixture.R *tmp)
-
-    dpdy = dfdy(prs)
-    drhody = dfdy(rho)
-    dudy = dfdy(rho_u/rho)
-    dvdy = dfdy(rho_v/rho)
-    dy1dy = dfdy(rho_y1/rho)
-    dy2dy = dfdy(rho_y2/rho)
-    dy3dy = dfdy(rho_y3/rho)
-    
-    L_1 = (rho_v/rho - C_sound) * (dpdy - rho*C_sound*dvdy)
-    L_2 = rho_v/rho * (C_sound**2 * drhody - dpdy)
-    L_3 = rho_v/rho * dudy
-    L_4 = 0.4*(1 - Ma**2) * C_sound/Ly * (prs - P_inf)
-    L_5 = (rho_v/rho)*dy1dy
-    L_6 = (rho_v/rho)*dy2dy
-    L_7 = (rho_v/rho)*dy3dy
-
-    d_1 = (1. / C_sound**2) * (L_2 + 0.5*(L_4 + L_1))
-    d_2 = 0.5*(L_1 + L_4)
-    d_3 = L_3
-    d_4 = 1./(2*rho*C_sound) * (L_4 - L_1)
-    d_5 = L_5
-    d_6 = L_6
-    d_7 = L_7
-
-    rho_rhs[0, :] = (rho_rhs - d_1)[0, :]
-    rho_u_rhs[0, :] = (rho_u_rhs - rho_u/rho*d_1 - rho*d_3)[0, :]
-    rho_v_rhs[0, :] = (rho_v_rhs - rho_v/rho*d_1 - rho*d_4)[0, :]
-    egy_rhs[0, :] = (egy_rhs -
-        0.5*np.sqrt((rho_u/rho)**2 + (rho_v/rho)**2)*d_1 -
-        d_2 * (prs + egy) / (rho*C_sound**2) -
-        rho * (rho_v/rho * d_4 + rho_u/rho * d_3))[0, :]
-    rho_y1_rhs[0, :] = (rho_y1_rhs - rho_y1/rho*d_1 - rho*d_5)[0, :]
-    rho_y2_rhs[0, :] = (rho_y2_rhs - rho_y2/rho*d_1 - rho*d_6)[0, :]
-    rho_y3_rhs[0, :] = (rho_y3_rhs - rho_y3/rho*d_1 - rho*d_7)[0, :]
-
-    L_1 = 0.4 * (1 - Ma**2) * C_sound/Ly * (prs - P_inf)
-    L_2 = rho_v/rho * (C_sound**2 * drhody - dpdy)
-    L_3 = rho_v/rho * dudy
-    L_4 = (rho_v/rho + C_sound) * (dpdy + rho*C_sound*dvdy)
-
-    d_1 = (1./C_sound**2) * (L_2 + 0.5*(L_4 + L_1))
-    d_2 = 0.5*(L_1 + L_4)
-    d_3 = L_3
-    d_4 = 1/(2*rho*C_sound) * (L_4 - L_1)
-
-    rho_rhs[-1, :] = (rho_rhs - d_1)[-1, :]
-    rho_u_rhs[-1, :] = (rho_u_rhs - rho_u/rho*d_1 - rho*d_3)[-1, :]
-    rho_v_rhs[-1, :] = (rho_v_rhs - rho_v/rho*d_1 - rho*d_4)[-1, :]
-    egy_rhs[-1, :] = (egy_rhs-
-        0.5*np.sqrt((rho_u/rho)**2 + (rho_v/rho)**2)*d_1 -
-        d_2 * (prs + egy) / (rho*C_sound**2) -
-        rho * (rho_v/rho * d_4 + rho_u/rho * d_3))[-1, :]
-    rho_y1_rhs[-1, :] = (rho_y1_rhs - rho_y1/rho*d_1 - rho*d_5)[-1, :]
-    rho_y2_rhs[-1, :] = (rho_y2_rhs - rho_y2/rho*d_1 - rho*d_6)[-1, :]
-    rho_y3_rhs[-1, :] = (rho_y3_rhs - rho_y3/rho*d_1 - rho*d_7)[-1, :]
-
-def update_temperature_and_pressure():
-    y1[...] = U[4]/U[0]
-    y2[...] = U[5]/U[0]
-    y3[...] = U[6]/U[0]
-    tmp[...] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho) / (rho*mixture.Cv(prs, tmp))
-    prs[...] = mixture.gas_model.P(rho, tmp)
-
-    xy = 1 - y1 - y2 - y3
-    U[4][ y1 > 0.5 ] += (rho*xy) [ y1 > 0.5 ]
-    U[5][ y1 < 0.5 ] += (rho*xy) [ y1 < 0.5 ]
-
-    # ensure that mass fractions are 0 <= y <= 1
-    for rho_yi in U[4:]:
-        rho_yi [rho_yi < 0] = 0.
-        rho_yi [rho_yi > rho] = rho [rho_yi > rho]
 
 # grid dimensions
 N = 144
@@ -321,9 +242,9 @@ reaction = OneStepReaction(arrhenius_coefficient, activation_energy)
 solver = OneStepSolver(mixture, grid, U, rhs, tmp, prs,
         reaction,
         rratio,
-        RK4)
-solver.set_rhs_pre_func(update_temperature_and_pressure)
-solver.set_rhs_post_func(non_reflecting_boundary_conditions)
+        RK4,
+        Ma,
+        P_inf)
 
 # run simulation
 import timeit
@@ -335,6 +256,7 @@ for i in range(timesteps):
     print("Iteration: {:10d}    Time: {:15.10e}    Total energy: {:15.10e}".format(i, dt*i, np.sum(egy)))
 
     solver.step(dt)
+    #solver.correct()
 
     ytest = (U[5]/U[0])
 

@@ -10,7 +10,9 @@ class OneStepSolver:
 
     def __init__(self, mixture, grid, U, rhs, tmp, prs,
             reaction, rratio,
-            timestepping_scheme):
+            timestepping_scheme,
+            Ma,
+            P_inf):
 
         self.mixture = mixture
         self.grid = grid
@@ -26,15 +28,15 @@ class OneStepSolver:
         self.molwt_3 = mixture.species_list[2].molecular_weight 
         self.enthalpy_of_formation = mixture.species_list[2].enthalpy_of_formation
         self.timestepping_scheme = timestepping_scheme
+        self.Ma = Ma
+        self.P_inf = P_inf
  
-        self.rhs_pre_func = None
-        self.rhs_post_func = None
 
         self.stepper = timestepping_scheme(U, rhs, self.compute_rhs)
 
     def compute_rhs(self):
 
-        if self.rhs_pre_func : self.rhs_pre_func(*self.rhs_pre_func_args)
+        self.correct()
 
         dfdx, dfdy = self.grid.dfdx, self.grid.dfdy
         rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
@@ -108,15 +110,97 @@ class OneStepSolver:
         # energy equation source term:
         egy_rhs[...] -= enthalpy_of_formation*(1+rratio)*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
 
-        if self.rhs_post_func : self.rhs_post_func(*self.rhs_post_func_args)
+        self.non_reflecting_boundary_conditions()
 
-    def set_rhs_pre_func(self, func, *args):
-        self.rhs_pre_func = func
-        self.rhs_pre_func_args = args
+    def correct(self):
+        U = self.U
+        mixture = self.mixture
+        rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
+        tmp = self.tmp
+        prs = self.prs
+        
+        y1 = U[4]/U[0]
+        y2 = U[5]/U[0]
+        y3 = U[6]/U[0]
+        tmp[...] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho) / (rho*mixture.Cv(prs, tmp))
+        prs[...] = mixture.gas_model.P(rho, tmp)
 
-    def set_rhs_post_func(self, func, *args):
-        self.rhs_post_func = func
-        self.rhs_post_func_args = args
+        xy = 1 - y1 - y2 - y3
+        U[4][ y1 > 0.5 ] += (rho*xy) [ y1 > 0.5 ]
+        U[5][ y1 < 0.5 ] += (rho*xy) [ y1 < 0.5 ]
+
+        # ensure that mass fractions are 0 <= y <= 1
+        for rho_yi in U[4:]:
+            rho_yi [rho_yi < 0] = 0.
+            rho_yi [rho_yi > rho] = rho [rho_yi > rho]
+
+    def non_reflecting_boundary_conditions(self):
+
+        dfdx, dfdy = self.grid.dfdx, self.grid.dfdy
+        Ly = self.grid.Ly
+        mixture = self.mixture
+        rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
+        rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y1_rhs, rho_y2_rhs, rho_y3_rhs = self.rhs
+        tmp = self.tmp
+        prs = self.prs
+ 
+        C_sound = np.sqrt(mixture.Cp(prs, tmp)/mixture.Cv(prs, tmp) * mixture.R *tmp)
+
+        dpdy = dfdy(prs)
+        drhody = dfdy(rho)
+        dudy = dfdy(rho_u/rho)
+        dvdy = dfdy(rho_v/rho)
+        dy1dy = dfdy(rho_y1/rho)
+        dy2dy = dfdy(rho_y2/rho)
+        dy3dy = dfdy(rho_y3/rho)
+        
+        L_1 = (rho_v/rho - C_sound) * (dpdy - rho*C_sound*dvdy)
+        L_2 = rho_v/rho * (C_sound**2 * drhody - dpdy)
+        L_3 = rho_v/rho * dudy
+        L_4 = 0.4*(1 - self.Ma**2) * C_sound/Ly * (prs - self.P_inf)
+        L_5 = (rho_v/rho)*dy1dy
+        L_6 = (rho_v/rho)*dy2dy
+        L_7 = (rho_v/rho)*dy3dy
+
+        d_1 = (1. / C_sound**2) * (L_2 + 0.5*(L_4 + L_1))
+        d_2 = 0.5*(L_1 + L_4)
+        d_3 = L_3
+        d_4 = 1./(2*rho*C_sound) * (L_4 - L_1)
+        d_5 = L_5
+        d_6 = L_6
+        d_7 = L_7
+
+        rho_rhs[0, :] = (rho_rhs - d_1)[0, :]
+        rho_u_rhs[0, :] = (rho_u_rhs - rho_u/rho*d_1 - rho*d_3)[0, :]
+        rho_v_rhs[0, :] = (rho_v_rhs - rho_v/rho*d_1 - rho*d_4)[0, :]
+        egy_rhs[0, :] = (egy_rhs -
+            0.5*np.sqrt((rho_u/rho)**2 + (rho_v/rho)**2)*d_1 -
+            d_2 * (prs + egy) / (rho*C_sound**2) -
+            rho * (rho_v/rho * d_4 + rho_u/rho * d_3))[0, :]
+        rho_y1_rhs[0, :] = (rho_y1_rhs - rho_y1/rho*d_1 - rho*d_5)[0, :]
+        rho_y2_rhs[0, :] = (rho_y2_rhs - rho_y2/rho*d_1 - rho*d_6)[0, :]
+        rho_y3_rhs[0, :] = (rho_y3_rhs - rho_y3/rho*d_1 - rho*d_7)[0, :]
+
+        L_1 = 0.4 * (1 - self.Ma**2) * C_sound/Ly * (prs - self.P_inf)
+        L_2 = rho_v/rho * (C_sound**2 * drhody - dpdy)
+        L_3 = rho_v/rho * dudy
+        L_4 = (rho_v/rho + C_sound) * (dpdy + rho*C_sound*dvdy)
+
+        d_1 = (1./C_sound**2) * (L_2 + 0.5*(L_4 + L_1))
+        d_2 = 0.5*(L_1 + L_4)
+        d_3 = L_3
+        d_4 = 1/(2*rho*C_sound) * (L_4 - L_1)
+
+        rho_rhs[-1, :] = (rho_rhs - d_1)[-1, :]
+        rho_u_rhs[-1, :] = (rho_u_rhs - rho_u/rho*d_1 - rho*d_3)[-1, :]
+        rho_v_rhs[-1, :] = (rho_v_rhs - rho_v/rho*d_1 - rho*d_4)[-1, :]
+        egy_rhs[-1, :] = (egy_rhs-
+            0.5*np.sqrt((rho_u/rho)**2 + (rho_v/rho)**2)*d_1 -
+            d_2 * (prs + egy) / (rho*C_sound**2) -
+            rho * (rho_v/rho * d_4 + rho_u/rho * d_3))[-1, :]
+        rho_y1_rhs[-1, :] = (rho_y1_rhs - rho_y1/rho*d_1 - rho*d_5)[-1, :]
+        rho_y2_rhs[-1, :] = (rho_y2_rhs - rho_y2/rho*d_1 - rho*d_6)[-1, :]
+        rho_y3_rhs[-1, :] = (rho_y3_rhs - rho_y3/rho*d_1 - rho*d_7)[-1, :]
 
     def step(self, dt):
         self.stepper.step(dt)
