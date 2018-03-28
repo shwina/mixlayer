@@ -134,6 +134,8 @@ class OneStepSolver:
             rho_yi [rho_yi < 0] = 0.
             rho_yi [rho_yi > rho] = rho [rho_yi > rho]
 
+        mixture.Y = [y1, y2, y3]
+
     def non_reflecting_boundary_conditions(self):
 
         dfdx, dfdy = self.grid.dfdx, self.grid.dfdy
