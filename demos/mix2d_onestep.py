@@ -89,7 +89,7 @@ grid = SinhGrid(N, (Lx, Ly), (BoundaryConditionType.PERIODIC, BoundaryConditionT
 # simulation control
 Ma = 0.35
 Re = 400
-Pr = 0.697
+Pr =0.697
 nperiod = 8 # number of perturbation wavelengths        
 timesteps = 20000
 writer = True
@@ -249,6 +249,7 @@ solver = OneStepSolver(mixture, grid, U, rhs, tmp, prs,
 # run simulation
 import timeit
 
+outfile = h5py.File("results.hdf5", "w")
 for i in range(timesteps):
  
     dt = calculate_timestep()
@@ -262,14 +263,12 @@ for i in range(timesteps):
 
     print(ytest.min(), ytest.max())
 
-    if writer:
-        if i%50 == 0:
-            outfile = h5py.File("{:05d}.hdf5".format(i))
-            outfile.create_group("fields")
-            outfile.create_dataset("fields/rho", data=rho)
-            outfile.create_dataset("fields/rho_u", data=rho_u)
-            outfile.create_dataset("fields/rho_v", data=rho_v)
-            outfile.create_dataset("fields/tmp", data=tmp)
-            outfile.create_dataset("fields/rho_y1", data=rho_y1)
-            outfile.create_dataset("fields/rho_y2", data=rho_y2)
-            outfile.create_dataset("fields/rho_y3", data=rho_y3)
+    if i%50 == 0:
+        outfile.create_group(str(i))
+        outfile.create_dataset("{}/rho".format(i), data=rho)
+        outfile.create_dataset("{}/rho_u".format(i), data=rho_u)
+        outfile.create_dataset("{}/rho_v".format(i), data=rho_v)
+        outfile.create_dataset("{}/tmp".format(i), data=tmp)
+        outfile.create_dataset("{}/rho_y1".format(i), data=rho_y1)
+        outfile.create_dataset("{}/rho_y2".format(i), data=rho_y2)
+        outfile.create_dataset("{}/rho_y3".format(i), data=rho_y3)
