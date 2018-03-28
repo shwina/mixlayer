@@ -6,5 +6,4 @@ setup(name='mixlayer',
     url='github.com/shwina/mixlayer',
     author='Ashwin Srinath',
     pacakages=['mixlayer'],
-    scripts=['mixlayer/mixlayer'],
     zip_safe=False)
