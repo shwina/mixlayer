@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 hf = h5py.File('results.hdf5', 'r')
 
-dsets = [hf[str(i)]['rho'] for i in sorted(hf.keys(), key=int)]
+dsets = [hf[str(i)]['rho_y3'] for i in sorted(hf.keys(), key=int)]
 arrays = [da.from_array(dset, chunks=(100, 100)) for dset in dsets]
 x = da.stack(arrays, axis=0)
 min_val = x.min().compute()

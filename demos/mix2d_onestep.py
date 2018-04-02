@@ -156,7 +156,6 @@ dims = (N, N)
 U = np.zeros((4+3,)+dims, dtype=np.float64)
 rhs = np.copy(U)
 rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = U
-rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y1_rhs, rho_y2_rhs, rho_y3_rhs = rhs
 tmp = np.zeros(dims, dtype=np.float64)
 prs = np.zeros(dims, dtype=np.float64)
 
@@ -215,7 +214,7 @@ products.enthalpy_of_formation = -heat_release_parameter*Cp_inf2*T_ref
 reaction = OneStepReaction(arrhenius_coefficient, activation_energy)
 
 # make solver
-solver = OneStepSolver(mixture, grid, U, rhs, tmp, prs,
+solver = OneStepSolver(mixture, grid, U, tmp, prs,
         reaction,
         rratio,
         RK4,
