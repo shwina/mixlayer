@@ -12,7 +12,8 @@ class OneStepSolver:
             reaction, rratio,
             timestepping_scheme,
             Ma,
-            P_inf):
+            P_inf,
+            T_ref):
 
         self.mixture = mixture
         self.grid = grid
@@ -30,8 +31,8 @@ class OneStepSolver:
         self.timestepping_scheme = timestepping_scheme
         self.Ma = Ma
         self.P_inf = P_inf
+        self.T_ref = T_ref
  
-
         self.stepper = timestepping_scheme(U, rhs, self.compute_rhs)
 
     def compute_rhs(self):
@@ -134,7 +135,26 @@ class OneStepSolver:
             rho_yi [rho_yi < 0] = 0.
             rho_yi [rho_yi > rho] = rho [rho_yi > rho]
 
-        mixture.Y = [y1, y2, y3]
+        mixture.Y = [rho_y1/rho, rho_y2/rho, rho_y3/rho]
+
+    def timestep(self):
+        rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
+        cfl_vel = 0.5
+        cfl_visc = 0.1
+        dxmin = np.minimum(self.grid.dx, self.grid.dy)
+
+        alpha_1 = self.mixture.D(0, self.P_inf, self.T_ref)
+        alpha_2 = self.mixture.mu(self.P_inf, self.T_ref)/rho
+        alpha_3 = self.mixture.kappa(self.P_inf, self.T_ref)/(self.mixture.Cp(self.P_inf, self.T_ref)*rho)
+        alpha_max = np.maximum(np.maximum(alpha_1, alpha_2), alpha_3)
+
+        C_sound = np.sqrt(self.mixture.Cp(self.P_inf, self.T_ref)/self.mixture.Cv(self.P_inf, self.T_ref)*self.mixture.R*self.tmp)
+        test_1 = cfl_vel*self.grid.dx/(C_sound + abs(rho_u/rho))
+        test_2 = cfl_vel*self.grid.dy/(C_sound + abs(rho_v/rho))
+        test_3 = cfl_visc*(dxmin**2)/alpha_max
+
+        dt = np.min(np.minimum(np.minimum(test_1, test_2), test_3))
+        return dt
 
     def non_reflecting_boundary_conditions(self):
 
@@ -204,7 +224,8 @@ class OneStepSolver:
         rho_y2_rhs[-1, :] = (rho_y2_rhs - rho_y2/rho*d_1 - rho*d_6)[-1, :]
         rho_y3_rhs[-1, :] = (rho_y3_rhs - rho_y3/rho*d_1 - rho*d_7)[-1, :]
 
-    def step(self, dt):
+    def step(self):
+        dt = self.timestep()
         self.stepper.step(dt)
 
         rho = self.U[0]

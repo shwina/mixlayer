@@ -57,28 +57,6 @@ def add_forcing():
 
     return u_pert, v_pert
 
-def calculate_timestep():
-
-    cfl_vel = 0.5
-    cfl_visc = 0.1
-
-    dxmin = np.minimum(grid.dx, grid.dy)
-
-    # calculate diffusivities:
-    alpha_1 = mixture.D(0, P_inf, T_ref)
-    alpha_2 = mixture.mu(P_inf, T_ref)/rho
-    alpha_3 = mixture.kappa(P_inf, T_ref)/(mixture.Cp(P_inf, T_ref)*rho)
-    alpha_max = np.maximum(np.maximum(alpha_1, alpha_2), alpha_3)
-
-    # calculate C_sound
-    C_sound = np.sqrt(mixture.Cp(P_inf, T_ref)/mixture.Cv(P_inf, T_ref)*mixture.R*tmp)
-    test_1 = cfl_vel*grid.dx/(C_sound + abs(rho_u/rho))
-    test_2 = cfl_vel*grid.dy/(C_sound + abs(rho_v/rho))
-    test_3 = cfl_visc*(dxmin**2)/alpha_max
-
-    dt = np.min(np.minimum(np.minimum(test_1, test_2), test_3))
-    return dt
-
 # grid dimensions
 N = 144
 Lx = 1
@@ -203,8 +181,6 @@ mixture.gas_model=MixtureEOSIdealGas(mixture)
 
 rho[:, :] = P_inf/(mixture.R*tmp[:, :])
 
-print(P_inf)
-
 rho_u[:, :] = rho*(U_inf2+(weight+1)/2.*(U_inf1-U_inf2))
 
 rho_v[:, :] = 0.0
@@ -244,20 +220,18 @@ solver = OneStepSolver(mixture, grid, U, rhs, tmp, prs,
         rratio,
         RK4,
         Ma,
-        P_inf)
+        P_inf,
+        T_ref)
 
 # run simulation
 import timeit
 
 outfile = h5py.File("results.hdf5", "w")
 for i in range(timesteps):
- 
-    dt = calculate_timestep()
 
-    print("Iteration: {:10d}    Time: {:15.10e}    Total energy: {:15.10e}".format(i, dt*i, np.sum(egy)))
+    print("Iteration: {:10d}    Total energy: {:15.10e}".format(i, np.sum(egy)))
 
-    solver.step(dt)
-    #solver.correct()
+    solver.step()
 
     ytest = (U[5]/U[0])
 
