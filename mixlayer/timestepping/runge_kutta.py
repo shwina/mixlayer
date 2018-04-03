@@ -12,16 +12,22 @@ import numpy as np
 
 class RK4:
     """
-    4th order Runge-Kutta time-stepping.
+    4th order Runge-Kutta time-stepping. Evolves the system of equations
+        
+        d(u_1)/dt = f1(...)
+        d(u_2)/dt = f2(...)
+        
+    by one time step.
 
     Parameters
     ----------
 
-    U : array_like
-        Function values
-
-    rhs : array_like
-        Space for storing right-hand sides
+    U : sequence of array_like ([u1, u2 ...])
+        Initial values of u_1, u_2, etc.,
+    
+    rhs : sequence of array_like ([rhs1, rhs2, ...])
+        Space for storing right-hand sides. Each array must be of the same
+        shape as the corresponding array in `U`.
 
     rhs_func : array_like
         Function that computes the right-hand sides and stores them in RHS
@@ -60,15 +66,20 @@ class RK4:
             self.rhs_func(*self.rhs_func_args)
 
             # then update U, U1
-            self.U[...] = self.U0 + h*self.rhs
-            self.U1[...] = k*self.rhs
+            for u, u0, u1, r in zip(self.U, self.U0, self.U1, self.rhs):
+                u[...] = u0 + h*r
+                u1[...] = k*r
 
         h = (dt/6)
 
         self.rhs_func(*self.rhs_func_args)
 
-        self.U[...] = self.U0 + self.U1 + h*self.rhs
+        for u, u0, u1, r in zip(self.U, self.U0, self.U1, self.rhs):
+            u[...] = u0 + u1 + h*r
 
     def _allocate_arrays(self):
-        self.U0 = np.copy(self.U)
-        self.U1 = np.copy(self.U)
+        self.U0 = []
+        self.U1 = []
+        for u in self.U:
+            self.U0.append(np.copy(u))
+            self.U1.append(np.copy(u))
