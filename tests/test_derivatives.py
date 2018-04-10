@@ -9,13 +9,15 @@ def test_dfdx():
     
     z = x**2
 
-    dzdx = dfdx(z, dx, bc_type=BoundaryConditionType.INNER)
+    dzdx = dfdx(z, dx, left_bc_type=BoundaryConditionType.INNER,
+        right_bc_type=BoundaryConditionType.INNER)
     assert_allclose(dzdx, 2*x)
 
     x = x[:, :-1]
     z = np.sin(x)
 
-    dzdx = dfdx(z, dx, bc_type=BoundaryConditionType.PERIODIC)
+    dzdx = dfdx(z, dx, left_bc_type=BoundaryConditionType.PERIODIC,
+        right_bc_type=BoundaryConditionType.PERIODIC)
     assert_allclose(dzdx, np.cos(x))
 
 def test_dfdy():
@@ -25,12 +27,14 @@ def test_dfdy():
     
     z = y**2
 
-    dzdy = dfdy(z, dy, bc_type=BoundaryConditionType.INNER)
+    dzdy = dfdy(z, dy, left_bc_type=BoundaryConditionType.INNER,
+        right_bc_type=BoundaryConditionType.INNER)
     assert_allclose(dzdy, 2*y)
 
     y = y[:-1, :]
     z = np.sin(y)
 
-    dzdy = dfdy(z, dy, bc_type=BoundaryConditionType.PERIODIC)
+    dzdy = dfdy(z, dy, left_bc_type=BoundaryConditionType.PERIODIC,
+        right_bc_type=BoundaryConditionType.PERIODIC)
     assert_allclose(dzdy, np.cos(y))
 

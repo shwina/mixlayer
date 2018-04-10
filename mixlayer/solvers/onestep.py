@@ -18,18 +18,14 @@ class OneStepSolver:
         self.mixture = mixture
         self.grid = grid
         self.fields = fields
-        self.arrhenius_coefficient = reaction.arrhenius_coefficient
-        self.activation_energy = reaction.activation_energy
+        self.reaction = reaction
         self.rratio = rratio
-        self.molwt_1 = mixture.species_list[0].molecular_weight
-        self.molwt_2 = mixture.species_list[1].molecular_weight 
-        self.molwt_3 = mixture.species_list[2].molecular_weight 
-        self.enthalpy_of_formation = mixture.species_list[2].enthalpy_of_formation
         self.timestepping_scheme = timestepping_scheme
         self.Ma = Ma
         self.P_inf = P_inf
         self.T_ref = T_ref
  
+        # primary fields
         self.U = [fields['rho'],
                   fields['rho_u'],
                   fields['rho_v'],
@@ -37,14 +33,14 @@ class OneStepSolver:
                   fields['rho_y1'],
                   fields['rho_y2'],
                   fields['rho_y3']]
+        self.tmp = fields['tmp']
+        self.prs = fields['prs']
 
         self.rhs = [np.zeros_like(u) for u in
             self.U]
 
         self.stepper = timestepping_scheme(self.U, self.rhs, self.compute_rhs)
 
-        self.tmp = fields['tmp']
-        self.prs = fields['prs']
 
     def compute_rhs(self):
 
@@ -54,13 +50,14 @@ class OneStepSolver:
         rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
         rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y1_rhs, rho_y2_rhs, rho_y3_rhs = self.rhs
         tmp, prs = self.tmp, self.prs
-        arrhenius_coefficient = self.arrhenius_coefficient
-        activation_energy = self.activation_energy
+
+        activation_energy = self.reaction.activation_energy
+        arrhenius_coefficient = self.reaction.arrhenius_coefficient
         rratio = self.rratio
-        enthalpy_of_formation = self.enthalpy_of_formation
-        molwt_1 = self.molwt_1
-        molwt_2 = self.molwt_2
-        molwt_3 = self.molwt_3
+        enthalpy_of_formation = self.mixture.species_list[2].enthalpy_of_formation
+        molwt_1 = self.mixture.species_list[0].molecular_weight
+        molwt_2 = self.mixture.species_list[1].molecular_weight
+        molwt_3 = self.mixture.species_list[2].molecular_weight
 
         mu = self.mixture.mu(prs, tmp)
         kappa = self.mixture.kappa(prs, tmp)

@@ -62,7 +62,11 @@ class SinhGrid(object):
         self.shape = [ny, nx]
 
     def dfdx(self, f):
-        return dfdx(f, self.dx, bc_type=self.bx)
+        return dfdx(f, self.dx,
+                    left_bc_type=self.bx,
+                    right_bc_type=self.bx)
         
     def dfdy(self, f):
-        return dfdy(f, self.dn, bc_type=self.by)*self.dndy
+        return dfdy(f, self.dn,
+                    left_bc_type=self.by,
+                    right_bc_type=self.by)*self.dndy
