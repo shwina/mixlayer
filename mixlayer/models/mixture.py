@@ -16,6 +16,8 @@ class Mixture:
         self.thermal_conductivity_model = thermal_conductivity_model
         self.mass_diffusivity_model = mass_diffusivity_model
 
+        self.gas_model.mixture = self
+
     @property
     def molecular_weight(self):
         M_inv = 0

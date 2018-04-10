@@ -66,7 +66,7 @@ grid = SinhGrid(N, (Lx, Ly), (BoundaryConditionType.PERIODIC, BoundaryConditionT
 
 # simulation control
 Ma = 0.35
-Re = 400
+Re = 500
 Pr =0.697
 nperiod = 8 # number of perturbation wavelengths        
 timesteps = 20000
@@ -98,9 +98,9 @@ hexane = Species(
     'hexane',
     86.178,
     specific_heat_model=SpeciesSpecificHeatModelConstant(
-        -51*31 + 6.767*T_prop - 3.623e-3*T_prop**2)
+        -51*31 + 6.767*T_prop - 3.623e-3*T_prop**2),
+    gas_model = SpeciesEOSIdealGas()
 )
-hexane.gas_model = SpeciesEOSIdealGas(hexane)
 
 air = Species(
     'air',
@@ -108,9 +108,9 @@ air = Species(
     specific_heat_model=SpeciesSpecificHeatModelConstant(
         Pr*(3.227e-3 + 8.389e-5*T_prop - 1.985e-8*T_prop**2)/(
             6.109e-6 + 4.606e-8*T_prop - 1.051e-11*T_prop**2)
-    )
+    ),
+    gas_model = SpeciesEOSIdealGas()
 )
-air.gas_model = SpeciesEOSIdealGas(air)
 
 products = Species(
     'products',
@@ -119,9 +119,9 @@ products = Species(
         (1*hexane.Cp(0, 0)*hexane.molecular_weight +
          rratio*air.Cp(0, 0)*air.molecular_weight) / (
          hexane.molecular_weight+rratio*air.molecular_weight)
-    )
+    ),
+    gas_model = SpeciesEOSIdealGas()
 )
-products.gas_model = SpeciesEOSIdealGas(products)
 
 # free stream thermodynamic properties
 Cp_inf1 = y1_inf1*hexane.Cp(0, 0) + y2_inf1*air.Cp(0, 0)
@@ -152,12 +152,27 @@ kappa = 0.5*(hexane.Cp(P_inf, T_ref) + air.Cp(P_inf, T_ref)) * mu / Pr
 mass_diffusivity = mu/(rho_ref*Pr) # here Pr is the same as the Schmidt number
 
 # fields
+fields = {}
 dims = (N, N)
-U = np.zeros((4+3,)+dims, dtype=np.float64)
-rhs = np.copy(U)
-rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = U
+rho = np.zeros(dims, dtype=np.float64)
+rho_u = np.zeros(dims, dtype=np.float64)
+rho_v = np.zeros(dims, dtype=np.float64)
+egy = np.zeros(dims, dtype=np.float64)
+rho_y1 = np.zeros(dims, dtype=np.float64)
+rho_y2 = np.zeros(dims, dtype=np.float64)
+rho_y3 = np.zeros(dims, dtype=np.float64)
 tmp = np.zeros(dims, dtype=np.float64)
 prs = np.zeros(dims, dtype=np.float64)
+
+fields['rho'] = rho
+fields['rho_u'] = rho_u
+fields['rho_v'] = rho_v
+fields['egy'] = egy
+fields['rho_y1'] = rho_y1
+fields['rho_y2'] = rho_y2
+fields['rho_y3'] = rho_y3
+fields['tmp'] = tmp
+fields['prs'] = prs
 
 T_flame_0 = 600
 # initialize fields
@@ -174,9 +189,9 @@ y3 = 1 - y1 - y2
 mixture = Mixture([hexane, air, products], [y1, y2, y3],
     viscosity_model=MixtureViscosityModelConstant(mu),
     thermal_conductivity_model=MixtureThermalConductivityModelConstant(kappa),
-    mass_diffusivity_model=MassDiffusivityModelConstant(mass_diffusivity))
+    mass_diffusivity_model=MassDiffusivityModelConstant(mass_diffusivity),
+    gas_model=MixtureEOSIdealGas())
 mixture.specific_heat_model=MixtureSpecificHeatModelMassWeighted(mixture)
-mixture.gas_model=MixtureEOSIdealGas(mixture)
 
 rho[:, :] = P_inf/(mixture.R*tmp[:, :])
 
@@ -214,7 +229,9 @@ products.enthalpy_of_formation = -heat_release_parameter*Cp_inf2*T_ref
 reaction = OneStepReaction(arrhenius_coefficient, activation_energy)
 
 # make solver
-solver = OneStepSolver(mixture, grid, U, tmp, prs,
+solver = OneStepSolver(mixture,
+        grid,
+        fields,
         reaction,
         rratio,
         RK4,
@@ -226,15 +243,14 @@ solver = OneStepSolver(mixture, grid, U, tmp, prs,
 import timeit
 
 outfile = h5py.File("results.hdf5", "w")
+outfile.create_dataset("grid/x", data=grid.x)
+outfile.create_dataset("grid/y", data=grid.y)
+
 for i in range(timesteps):
 
     print("Iteration: {:10d}    Total energy: {:15.10e}".format(i, np.sum(egy)))
 
     solver.step()
-
-    ytest = (U[5]/U[0])
-
-    print(ytest.min(), ytest.max())
 
     if i%50 == 0:
         outfile.create_group(str(i))

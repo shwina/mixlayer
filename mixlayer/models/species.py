@@ -21,6 +21,8 @@ class Species:
         self.viscosity_model = viscosity_model
         self.enthalpy_of_formation = 0
 
+        self.gas_model.specie = self
+
     def Cp(self, p, T):
         return self.specific_heat_model.Cp(p, T)
 

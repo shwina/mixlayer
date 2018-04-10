@@ -2,10 +2,13 @@ import h5py
 import dask.array as da
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
 
-hf = h5py.File('results.hdf5', 'r')
+fname = sys.argv[1]
 
-dsets = [hf[str(i)]['rho_y3'] for i in sorted(hf.keys(), key=int)]
+hf = h5py.File(fname, 'r')
+
+dsets = [hf[str(i)]['tmp'] for i in sorted(hf.keys(), key=int)]
 arrays = [da.from_array(dset, chunks=(100, 100)) for dset in dsets]
 x = da.stack(arrays, axis=0)
 min_val = x.min().compute()

@@ -1,8 +1,8 @@
 import numpy as np
 
 class SpeciesEOSIdealGas(object):
-    def __init__(self, specie):
-        self.specie = specie
+    def __init__(self):
+        self.specie = None
 
     def CpMCv(self, p, T):
         return self.specie.R
@@ -11,8 +11,8 @@ class SpeciesEOSIdealGas(object):
         return rho * self.specie.R * T
 
 class MixtureEOSIdealGas(object):
-    def __init__(self, mixture):
-        self.mixture = mixture
+    def __init__(self):
+        self.mixture = None
 
     def CpMCv(self, p, T):
         return self.mixture.R

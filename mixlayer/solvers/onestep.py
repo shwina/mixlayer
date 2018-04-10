@@ -8,7 +8,7 @@ from mixlayer.filtering.explicit import filter5
 
 class OneStepSolver:
 
-    def __init__(self, mixture, grid, U, tmp, prs,
+    def __init__(self, mixture, grid, fields,
             reaction, rratio,
             timestepping_scheme,
             Ma,
@@ -17,10 +17,7 @@ class OneStepSolver:
 
         self.mixture = mixture
         self.grid = grid
-        self.U = U
-        self.rhs = np.zeros_like(self.U)
-        self.tmp = tmp
-        self.prs = prs
+        self.fields = fields
         self.arrhenius_coefficient = reaction.arrhenius_coefficient
         self.activation_energy = reaction.activation_energy
         self.rratio = rratio
@@ -33,7 +30,21 @@ class OneStepSolver:
         self.P_inf = P_inf
         self.T_ref = T_ref
  
+        self.U = [fields['rho'],
+                  fields['rho_u'],
+                  fields['rho_v'],
+                  fields['egy'],
+                  fields['rho_y1'],
+                  fields['rho_y2'],
+                  fields['rho_y3']]
+
+        self.rhs = [np.zeros_like(u) for u in
+            self.U]
+
         self.stepper = timestepping_scheme(self.U, self.rhs, self.compute_rhs)
+
+        self.tmp = fields['tmp']
+        self.prs = fields['prs']
 
     def compute_rhs(self):
 
