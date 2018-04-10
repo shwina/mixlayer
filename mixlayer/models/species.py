@@ -17,11 +17,13 @@ class Species:
         self.species_name = species_name
         self.molecular_weight = molecular_weight
         self.gas_model = gas_model
-        self.specific_heat_model=specific_heat_model
+        self.specific_heat_model = specific_heat_model
         self.viscosity_model = viscosity_model
         self.enthalpy_of_formation = 0
 
         self.gas_model.specie = self
+        self.specific_heat_model.specie = self
+        self.viscosity_model.specie = self
 
     def Cp(self, p, T):
         return self.specific_heat_model.Cp(p, T)

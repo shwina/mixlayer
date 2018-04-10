@@ -11,21 +11,19 @@ class SpeciesSpecificHeatModelConstant(object):
         return self._Cp
 
 class MixtureSpecificHeatModelMassWeighted(object):
-    def __init__(self, mixture):
-        self.mixture = mixture
-        grid_dims = mixture.Y[0].shape
-        self._Cp = np.zeros(grid_dims, dtype=np.float64)
+    def __init__(self):
+        self.mixture = None
 
     def Cp(self, p, T):
-        self._Cp[...] = 0
+        out = 0
         for Yi, specie in zip(self.mixture.Y,
                               self.mixture.species_list):
-            self._Cp += Yi * specie.Cp(p, T)
-        return self._Cp
+            out += Yi * specie.Cp(p, T)
+        return out
 
     def Cv(self, p, T):
-        self._Cv[...] = 0
+        out = 0
         for Yi, specie in zip(self.mixture.Y,
                               self.mixture.species_list):
-            self._Cv += Yi * specie.Cv(p, T)
-        return self._Cv
+            out += Yi * specie.Cv(p, T)
+        return out

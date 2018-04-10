@@ -17,6 +17,10 @@ class Mixture:
         self.mass_diffusivity_model = mass_diffusivity_model
 
         self.gas_model.mixture = self
+        self.specific_heat_model.mixture = self
+        self.viscosity_model.mixture = self
+        self.thermal_conductivity_model.mixture = self
+        self.mass_diffusivity_model.mixture = self
 
     @property
     def molecular_weight(self):

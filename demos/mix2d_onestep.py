@@ -1,4 +1,4 @@
-import numpy as np
+
 import matplotlib.pyplot as plt
 import h5py
 
@@ -99,7 +99,8 @@ hexane = Species(
     86.178,
     specific_heat_model=SpeciesSpecificHeatModelConstant(
         -51*31 + 6.767*T_prop - 3.623e-3*T_prop**2),
-    gas_model = SpeciesEOSIdealGas()
+    gas_model = SpeciesEOSIdealGas(),
+    viscosity_model = SpeciesViscosityModelConstant(None)
 )
 
 air = Species(
@@ -109,7 +110,8 @@ air = Species(
         Pr*(3.227e-3 + 8.389e-5*T_prop - 1.985e-8*T_prop**2)/(
             6.109e-6 + 4.606e-8*T_prop - 1.051e-11*T_prop**2)
     ),
-    gas_model = SpeciesEOSIdealGas()
+    gas_model = SpeciesEOSIdealGas(),
+    viscosity_model = SpeciesViscosityModelConstant(None)
 )
 
 products = Species(
@@ -120,7 +122,8 @@ products = Species(
          rratio*air.Cp(0, 0)*air.molecular_weight) / (
          hexane.molecular_weight+rratio*air.molecular_weight)
     ),
-    gas_model = SpeciesEOSIdealGas()
+    gas_model = SpeciesEOSIdealGas(),
+    viscosity_model = SpeciesViscosityModelConstant(None)
 )
 
 # free stream thermodynamic properties
@@ -190,8 +193,8 @@ mixture = Mixture([hexane, air, products], [y1, y2, y3],
     viscosity_model=MixtureViscosityModelConstant(mu),
     thermal_conductivity_model=MixtureThermalConductivityModelConstant(kappa),
     mass_diffusivity_model=MassDiffusivityModelConstant(mass_diffusivity),
-    gas_model=MixtureEOSIdealGas())
-mixture.specific_heat_model=MixtureSpecificHeatModelMassWeighted(mixture)
+    gas_model=MixtureEOSIdealGas(),
+    specific_heat_model=MixtureSpecificHeatModelMassWeighted())
 
 rho[:, :] = P_inf/(mixture.R*tmp[:, :])
 
