@@ -8,13 +8,17 @@ from mixlayer.filtering.explicit import filter5
 
 class OneStepSolver:
 
-    def __init__(self, mixture, grid, fields,
+    def __init__(
+            self,
+            operators,
+            mixture, grid, fields,
             reaction, rratio,
             timestepping_scheme,
             Ma,
             P_inf,
             T_ref):
-
+        
+        self.operators = operators
         self.mixture = mixture
         self.grid = grid
         self.fields = fields
@@ -46,7 +50,7 @@ class OneStepSolver:
 
         self.correct()
 
-        dfdx, dfdy = self.grid.dfdx, self.grid.dfdy
+        dfdx, dfdy = self.operators.dfdx, self.operators.dfdy
         rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
         rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y1_rhs, rho_y2_rhs, rho_y3_rhs = self.rhs
         tmp, prs = self.tmp, self.prs
@@ -166,7 +170,7 @@ class OneStepSolver:
 
     def non_reflecting_boundary_conditions(self):
 
-        dfdx, dfdy = self.grid.dfdx, self.grid.dfdy
+        dfdx, dfdy = self.operators.dfdx, self.operators.dfdy
         Ly = self.grid.Ly
         mixture = self.mixture
         rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U

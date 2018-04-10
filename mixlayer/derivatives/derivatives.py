@@ -1,6 +1,6 @@
 import numpy as np
 from numba import jit, float64, prange
-from .boundaries import BoundaryConditionType
+from mixlayer.boundaries import BoundaryConditionType
 
 @jit(nopython=True, nogil=True, parallel=True)
 def dfdx(f, dx,

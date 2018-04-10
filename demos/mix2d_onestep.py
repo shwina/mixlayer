@@ -4,7 +4,7 @@ import h5py
 
 from mixlayer.constants import *
 from mixlayer.solvers.onestep import OneStepSolver
-from mixlayer.derivatives import BoundaryConditionType
+from mixlayer.boundaries import BoundaryCondition
 from mixlayer.grid.mapped import SinhGrid
 from mixlayer.timestepping import RK4
 from mixlayer.models.species import *
@@ -13,13 +13,14 @@ from mixlayer.models.thermodynamics import *
 from mixlayer.models.transport import *
 from mixlayer.models.eos import *
 from mixlayer.models.reaction import *
+from mixlayer.operators import Operators
 
 from mixlayer.poisson import PoissonSolver
 
 def add_forcing():
 
     x, y, dx, dy = grid.x, grid.y, grid.dx, grid.dy
-    dfdx, dfdy = grid.dfdx, grid.dfdy
+    dfdx, dfdy = ops.dfdx, ops.dfdy
         
     fx = np.zeros_like(x, dtype=np.float64)
     fy = np.zeros_like(x, dtype=np.float64)
@@ -62,11 +63,18 @@ N = 144
 Lx = 1
 Ly = Lx*((N-1)/N)*2.
 grid_beta = 5
-grid = SinhGrid(N, (Lx, Ly), (BoundaryConditionType.PERIODIC, BoundaryConditionType.INNER), grid_beta)
+grid = SinhGrid(N, (Lx, Ly), grid_beta)
+
+# operators
+ops = Operators(grid,
+        [BoundaryCondition('periodic'),
+         BoundaryCondition('periodic'),
+         BoundaryCondition('inner'),
+         BoundaryCondition('inner')])
 
 # simulation control
 Ma = 0.35
-Re = 500
+Re = 400
 Pr =0.697
 nperiod = 8 # number of perturbation wavelengths        
 timesteps = 20000
@@ -232,7 +240,9 @@ products.enthalpy_of_formation = -heat_release_parameter*Cp_inf2*T_ref
 reaction = OneStepReaction(arrhenius_coefficient, activation_energy)
 
 # make solver
-solver = OneStepSolver(mixture,
+solver = OneStepSolver(
+        ops,
+        mixture,
         grid,
         fields,
         reaction,

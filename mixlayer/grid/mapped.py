@@ -3,7 +3,7 @@ from ..derivatives import dfdx, dfdy
 
 class SinhGrid(object):
 
-    def __init__(self, size, dims, boundaries, beta):
+    def __init__(self, size, dims, beta):
         """
         Creates a grid "stretched" in the y-direction with stretching function 'sinh(y)'.
 
@@ -13,10 +13,6 @@ class SinhGrid(object):
             tuple (Nx, Ny) specifying the number of grid points in each co-ordinate direction.
         dims : float or tuple of float
             tuple (Lx, Ly) specifying the length of the grid in each co-ordinate direction.
-        boundaries: tuple of mixlayer.derivatives.BoundaryType
-            Tuple (bx, by) specifying the way boundaries are treated in each co-ordinate direction.
-                BoundaryType.INNER : inner stencils used on the boundary)
-                BoundaryType.PERIODIC : domain wraps around itself in this direction).
         beta : stretching parameter
             Extent of stretching (very small beta implies no stretching, more beta implies more stretching).
         """
@@ -28,7 +24,6 @@ class SinhGrid(object):
             Lx = Ly = dims
         else:
             Lx, Ly = dims
-        bx, by = boundaries
 
         dx = Lx/(nx-1)
         dn = 1./(ny-1)
@@ -57,16 +52,4 @@ class SinhGrid(object):
         self.Ly = Ly
         self.dndy = dndy
         self.d2ndy2 = d2ndy2
-        self.bx = bx
-        self.by = by
         self.shape = [ny, nx]
-
-    def dfdx(self, f):
-        return dfdx(f, self.dx,
-                    left_bc_type=self.bx,
-                    right_bc_type=self.bx)
-        
-    def dfdy(self, f):
-        return dfdy(f, self.dn,
-                    left_bc_type=self.by,
-                    right_bc_type=self.by)*self.dndy
