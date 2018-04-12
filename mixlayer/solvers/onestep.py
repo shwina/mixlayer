@@ -87,13 +87,13 @@ class OneStepSolver:
                             rho_y1*rho_y2/(molwt_1*molwt_2)))
 
         # species equation convection and diffusion terms:
-        for i, (rho_yi, rho_yi_rhs) in enumerate(zip(self.U[4:], self.rhs[4:])):
+        for i, (yi, rho_yi_rhs) in enumerate(zip(self.mixture.Y, self.rhs[4:])):
             D = self.mixture.D(i, tmp, prs)
             rho_yi_rhs[...] = (
-                - divergence(rho_u*rho_yi/rho, rho_v*rho_yi/rho)
+                - divergence(rho_u*yi, rho_v*yi)
                 - rho*D*divergence(
-                    rho_yi/rho,
-                    rho_yi/rho))
+                    yi,
+                    yi))
 
         # species equation source terms:
         rho_y1_rhs[...] -= molwt_1 * reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
