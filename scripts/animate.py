@@ -8,7 +8,7 @@ fname = sys.argv[1]
 
 hf = h5py.File(fname, 'r')
 
-dsets = [hf[str(i)]['tmp'] for i in sorted(hf.keys(), key=int)]
+dsets = [hf[str(i)]['rho_y1'] for i in sorted(hf.keys(), key=int)]
 arrays = [da.from_array(dset, chunks=(100, 100)) for dset in dsets]
 x = da.stack(arrays, axis=0)
 min_val = x.min().compute()

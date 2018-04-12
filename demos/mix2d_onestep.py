@@ -256,8 +256,6 @@ solver = OneStepSolver(
 import timeit
 
 outfile = h5py.File("results.hdf5", "w")
-outfile.create_dataset("grid/x", data=grid.x)
-outfile.create_dataset("grid/y", data=grid.y)
 
 for i in range(timesteps):
 

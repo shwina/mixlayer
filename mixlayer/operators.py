@@ -23,8 +23,8 @@ class Operators:
             self.boundary_conditions[3].bc_val
             ) * self.grid.dndy
 
-    def divergence(self, f):
-        return self.dfdx(f) + self.dfdy(f)
+    def divergence(self, u, v):
+        return self.dfdx(u) + self.dfdy(v)
     
     def laplacian(self, f):
         return (derivatives.dfdx(self.dfdx(f),

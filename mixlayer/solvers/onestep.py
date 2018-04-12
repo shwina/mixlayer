@@ -47,18 +47,13 @@ class OneStepSolver:
 
 
     def compute_rhs(self):
-
         self.correct()
 
         dfdx, dfdy = self.operators.dfdx, self.operators.dfdy
+        divergence, laplacian = self.operators.divergence, self.operators.laplacian
         rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
         rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y1_rhs, rho_y2_rhs, rho_y3_rhs = self.rhs
         tmp, prs = self.tmp, self.prs
-
-        activation_energy = self.reaction.activation_energy
-        arrhenius_coefficient = self.reaction.arrhenius_coefficient
-        rratio = self.rratio
-        enthalpy_of_formation = self.mixture.species_list[2].enthalpy_of_formation
         molwt_1 = self.mixture.species_list[0].molecular_weight
         molwt_2 = self.mixture.species_list[1].molecular_weight
         molwt_3 = self.mixture.species_list[2].molecular_weight
@@ -66,62 +61,44 @@ class OneStepSolver:
         mu = self.mixture.mu(prs, tmp)
         kappa = self.mixture.kappa(prs, tmp)
 
-        # euler terms:
-        rho_rhs[...] = -dfdy(rho_v)
-        rho_rhs[[0,-1], :] = 0
-        rho_rhs[...] += -dfdx(rho_u)
+        activation_energy = self.reaction.activation_energy
+        arrhenius_coefficient = self.reaction.arrhenius_coefficient
+        rratio = self.rratio
+        enthalpy_of_formation = self.mixture.species_list[2].enthalpy_of_formation
+        reaction_rate = arrhenius_coefficient * rho * np.exp(
+                -activation_energy/(universal_gas_constant*tmp))
 
-        rho_u_rhs[...] = -dfdy(rho_u*rho_v/rho)
-        rho_u_rhs[[0,-1], :] = 0
-        rho_u_rhs += -dfdx(rho_u*rho_u/rho + prs) 
-        
-        rho_v_rhs[...] = -dfdy(rho_v*rho_v/rho + prs)
-        rho_v_rhs[[0,-1], :] = 0 
-        rho_v_rhs += -dfdx(rho_v*rho_u/rho )
-        
-        egy_rhs_x = -dfdx((egy+prs) * (rho_u/rho))
-        egy_rhs_y = -dfdy((egy+prs) * (rho_v/rho))
-        egy_rhs_y[[0,-1], :] = 0
+        # euler and viscous terms:
+        tau_11, tau_12, tau_22 = self.stress_tensor()
 
-        egy_rhs[...] = egy_rhs_x + egy_rhs_y
-
-        # viscous terms:
-        div_vel = dfdx(rho_u/rho) + dfdy(rho_v/rho)
-
-        tau_11 = -(2./3)*mu*div_vel + 2*mu*dfdx(rho_u/rho) 
-        tau_22 = -(2./3)*mu*div_vel + 2*mu*dfdy(rho_v/rho)
-        tau_12 = mu*(dfdx(rho_v/rho) + dfdy(rho_u/rho))
-        
-        tau_12[0, :] = ( 18.*tau_12[ 1, :] - 9*tau_12[ 2, :] + 2*tau_12[ 3, :]) / 11
-        tau_12[-1, :] =( 18.*tau_12[-2, :] - 9*tau_12[-3, :] + 2*tau_12[-4, :]) / 11
-
-        rho_u_rhs += dfdx(tau_11) + dfdy(tau_12)
-        rho_v_rhs += dfdx(tau_12) + dfdy(tau_22)
-        egy_rhs += (dfdx(rho_u/rho * tau_11) + dfdx(rho_v/rho * tau_12) +
-                    dfdy(rho_u/rho * tau_12) + dfdy(rho_v/rho * tau_22) + 
-                    kappa*(
-                        dfdx(dfdx(tmp)) +
-                        dfdy(dfdy(tmp))))
+        rho_rhs[...] = -divergence(rho_u, rho_v)
+        rho_u_rhs[...] = (-divergence(rho_u*rho_u/rho + prs, rho_u*rho_v/rho)
+                          + dfdx(tau_11)
+                          + dfdy(tau_12))
+        rho_v_rhs[...] = (-divergence(rho_v*rho_u/rho, rho_v*rho_v/rho + prs)
+                          + dfdx(tau_12)
+                          + dfdy(tau_22))
+        egy_rhs[...] = (-divergence((egy+prs) * rho_u/rho,
+                                    (egy+prs) * rho_v/rho)
+                        + dfdx(rho_u/rho * tau_11) + dfdx(rho_v/rho * tau_12)
+                        + dfdy(rho_u/rho * tau_12) + dfdy(rho_v/rho * tau_22)
+                        + kappa*(laplacian(tmp))
+                        - enthalpy_of_formation*(1+rratio)*reaction_rate*(
+                            rho_y1*rho_y2/(molwt_1*molwt_2)))
 
         # species equation convection and diffusion terms:
         for i, (rho_yi, rho_yi_rhs) in enumerate(zip(self.U[4:], self.rhs[4:])):
             D = self.mixture.D(i, tmp, prs)
-            rho_yi_rhs_x = dfdx(-rho_u*rho_yi/rho +
-                    rho*D*dfdx(-rho_yi/rho))
-            rho_yi_rhs_y = dfdy(-rho_v*rho_yi/rho +
-                    rho*D*dfdy(-rho_yi/rho))
-            rho_yi_rhs_y[[0, -1], :] = 0
-            rho_yi_rhs[...] = rho_yi_rhs_x + rho_yi_rhs_y
+            rho_yi_rhs[...] = (
+                - divergence(rho_u*rho_yi/rho, rho_v*rho_yi/rho)
+                - rho*D*divergence(
+                    rho_yi/rho,
+                    rho_yi/rho))
 
         # species equation source terms:
-        reaction_rate = arrhenius_coefficient * rho * np.exp(
-                -activation_energy/(universal_gas_constant*tmp))
         rho_y1_rhs[...] -= molwt_1 * reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
         rho_y2_rhs[...] -= molwt_2 * rratio*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
         rho_y3_rhs[...] += molwt_3 * (1+rratio)*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
-
-        # energy equation source term:
-        egy_rhs[...] -= enthalpy_of_formation*(1+rratio)*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
 
         self.non_reflecting_boundary_conditions()
 
@@ -171,13 +148,29 @@ class OneStepSolver:
     def non_reflecting_boundary_conditions(self):
 
         dfdx, dfdy = self.operators.dfdx, self.operators.dfdy
+        divergence, laplacian = self.operators.divergence, self.operators.laplacian
         Ly = self.grid.Ly
         mixture = self.mixture
         rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
         rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y1_rhs, rho_y2_rhs, rho_y3_rhs = self.rhs
         tmp = self.tmp
         prs = self.prs
- 
+        molwt_1 = self.mixture.species_list[0].molecular_weight
+        molwt_2 = self.mixture.species_list[1].molecular_weight
+        molwt_3 = self.mixture.species_list[2].molecular_weight
+
+        mu = self.mixture.mu(prs, tmp)
+        kappa = self.mixture.kappa(prs, tmp)
+
+        activation_energy = self.reaction.activation_energy
+        arrhenius_coefficient = self.reaction.arrhenius_coefficient
+        rratio = self.rratio
+        enthalpy_of_formation = self.mixture.species_list[2].enthalpy_of_formation
+        reaction_rate = arrhenius_coefficient * rho * np.exp(
+                -activation_energy/(universal_gas_constant*tmp))
+
+        tau_11, tau_12, tau_22 = self.stress_tensor()
+
         C_sound = np.sqrt(mixture.Cp(prs, tmp)/mixture.Cv(prs, tmp) * mixture.R *tmp)
 
         dpdy = dfdy(prs)
@@ -204,13 +197,43 @@ class OneStepSolver:
         d_6 = L_6
         d_7 = L_7
 
-        rho_rhs[0, :] = (rho_rhs - d_1)[0, :]
-        rho_u_rhs[0, :] = (rho_u_rhs - rho_u/rho*d_1 - rho*d_3)[0, :]
-        rho_v_rhs[0, :] = (rho_v_rhs - rho_v/rho*d_1 - rho*d_4)[0, :]
-        egy_rhs[0, :] = (egy_rhs -
-            0.5*np.sqrt((rho_u/rho)**2 + (rho_v/rho)**2)*d_1 -
-            d_2 * (prs + egy) / (rho*C_sound**2) -
-            rho * (rho_v/rho * d_4 + rho_u/rho * d_3))[0, :]
+        rho_rhs[0, :] = (
+            - d_1[0, :]
+            - dfdx(np.atleast_2d(rho_u[0, :]))
+        )
+        rho_u_rhs[0, :] = (
+            ( - rho_u/rho*d_1 - rho*d_3)[0, :]
+            - dfdx(np.atleast_2d((rho_u*rho_u/rho + prs)[0, :]))
+            + (dfdx(tau_11) + dfdy(tau_12))[0, :]
+        )
+        rho_v_rhs[0, :] = (
+            ( - rho_v/rho*d_1 - rho*d_4)[0, :]
+            - dfdx(np.atleast_2d((rho_v*rho_u/rho)[0, :]))
+            + (dfdx(tau_12) + dfdy(tau_22))[0, :]
+        )
+        egy_rhs[0, :] = (
+            (   - 0.5*np.sqrt((rho_u/rho)**2 + (rho_v/rho)**2)*d_1
+                - d_2 * (prs + egy) / (rho*C_sound**2)
+                - rho * (rho_v/rho * d_4 + rho_u/rho * d_3))[0, :]
+            - dfdx(np.atleast_2d(((egy+prs) * rho_u/rho)[0, :]))
+            + (dfdx(rho_u/rho * tau_11) + dfdx(rho_v/rho * tau_12) +
+                    dfdy(rho_u/rho * tau_12) + dfdy(rho_v/rho * tau_22) + 
+                    kappa*(laplacian(tmp)))[0, :]
+            - (enthalpy_of_formation*(1+rratio)*reaction_rate*(
+                rho_y1*rho_y2/(molwt_1*molwt_2)))[0, :]
+        )
+
+        for i, (rho_yi, rho_yi_rhs) in enumerate(zip(self.U[4:], self.rhs[4:])):
+            D = self.mixture.D(i, tmp, prs)
+            rho_yi_rhs[0, :] = (
+                - dfdx(rho_u*rho_yi/rho)
+                - rho*D*dfdx(rho_yi/rho))[0, :]
+
+        # species equation source terms:
+        rho_y1_rhs[0, :] -= molwt_1 * (reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[0, :]
+        rho_y2_rhs[0, :] -= molwt_2 * (rratio*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[0, :]
+        rho_y3_rhs[0, :] += molwt_3 * ((1+rratio)*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[0, :]
+
         rho_y1_rhs[0, :] = (rho_y1_rhs - rho_y1/rho*d_1 - rho*d_5)[0, :]
         rho_y2_rhs[0, :] = (rho_y2_rhs - rho_y2/rho*d_1 - rho*d_6)[0, :]
         rho_y3_rhs[0, :] = (rho_y3_rhs - rho_y3/rho*d_1 - rho*d_7)[0, :]
@@ -225,16 +248,70 @@ class OneStepSolver:
         d_3 = L_3
         d_4 = 1/(2*rho*C_sound) * (L_4 - L_1)
 
-        rho_rhs[-1, :] = (rho_rhs - d_1)[-1, :]
-        rho_u_rhs[-1, :] = (rho_u_rhs - rho_u/rho*d_1 - rho*d_3)[-1, :]
-        rho_v_rhs[-1, :] = (rho_v_rhs - rho_v/rho*d_1 - rho*d_4)[-1, :]
-        egy_rhs[-1, :] = (egy_rhs-
-            0.5*np.sqrt((rho_u/rho)**2 + (rho_v/rho)**2)*d_1 -
-            d_2 * (prs + egy) / (rho*C_sound**2) -
-            rho * (rho_v/rho * d_4 + rho_u/rho * d_3))[-1, :]
+        rho_rhs[-1, :] = (
+            - d_1[-1, :]
+            - dfdx(np.atleast_2d(rho_u[-1, :]))
+        )
+
+        rho_u_rhs[-1, :] = (
+            ( - rho_u/rho*d_1 - rho*d_3)[-1, :]
+            - dfdx(np.atleast_2d((rho_u*rho_u/rho + prs)[-1, :]))
+            + (dfdx(tau_11) + dfdy(tau_12))[-1, :]
+        )
+
+        rho_v_rhs[-1, :] = (
+            ( - rho_v/rho*d_1 - rho*d_4)[-1, :]
+            - dfdx(np.atleast_2d((rho_v*rho_u/rho)[-1, :]))
+            + (dfdx(tau_12) + dfdy(tau_22))[-1, :]
+        )
+
+        egy_rhs[-1, :] = (
+            (   - 0.5*np.sqrt((rho_u/rho)**2 + (rho_v/rho)**2)*d_1 -
+                d_2 * (prs + egy) / (rho*C_sound**2) -
+                rho * (rho_v/rho * d_4 + rho_u/rho * d_3))[-1, :]
+            - dfdx(np.atleast_2d(((egy+prs) * rho_u/rho)[-1, :]))
+            + (dfdx(rho_u/rho * tau_11) + dfdx(rho_v/rho * tau_12) +
+                    dfdy(rho_u/rho * tau_12) + dfdy(rho_v/rho * tau_22) + 
+                    kappa*(laplacian(tmp)))[-1, :]
+            - (enthalpy_of_formation*(1+rratio)*reaction_rate*(
+                rho_y1*rho_y2/(molwt_1*molwt_2)))[-1, :]
+        )
+
+        for i, (rho_yi, rho_yi_rhs) in enumerate(zip(self.U[4:], self.rhs[4:])):
+            D = self.mixture.D(i, tmp, prs)
+            rho_yi_rhs[-1, :] = (
+                - dfdx(rho_u*rho_yi/rho)
+                - rho*D*dfdx(rho_yi/rho))[-1, :]
+
+        # species equation source terms:
+        rho_y1_rhs[-1, :] -= molwt_1 * (reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[-1, :]
+        rho_y2_rhs[-1, :] -= molwt_2 * (rratio*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[-1, :]
+        rho_y3_rhs[-1, :] += molwt_3 * ((1+rratio)*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[-1, :]
+
+
         rho_y1_rhs[-1, :] = (rho_y1_rhs - rho_y1/rho*d_1 - rho*d_5)[-1, :]
         rho_y2_rhs[-1, :] = (rho_y2_rhs - rho_y2/rho*d_1 - rho*d_6)[-1, :]
         rho_y3_rhs[-1, :] = (rho_y3_rhs - rho_y3/rho*d_1 - rho*d_7)[-1, :]
+        
+    def stress_tensor(self):
+        dfdx, dfdy = self.operators.dfdx, self.operators.dfdy
+        mixture = self.mixture
+        rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
+        tmp = self.tmp
+        prs = self.prs
+        mu = self.mixture.mu(prs, tmp)
+        kappa = self.mixture.kappa(prs, tmp)
+
+        div_vel = dfdx(rho_u/rho) + dfdy(rho_v/rho)
+
+        tau_11 = -(2./3)*mu*div_vel + 2*mu*dfdx(rho_u/rho) 
+        tau_22 = -(2./3)*mu*div_vel + 2*mu*dfdy(rho_v/rho)
+        tau_12 = mu*(dfdx(rho_v/rho) + dfdy(rho_u/rho))
+        
+        tau_12[0, :] = ( 18.*tau_12[ 1, :] - 9*tau_12[ 2, :] + 2*tau_12[ 3, :]) / 11
+        tau_12[-1, :] =( 18.*tau_12[-2, :] - 9*tau_12[-3, :] + 2*tau_12[-4, :]) / 11
+
+        return tau_11, tau_12, tau_22
 
     def step(self):
         dt = self.timestep()
