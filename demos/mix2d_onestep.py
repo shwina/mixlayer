@@ -169,9 +169,7 @@ rho = np.zeros(dims, dtype=np.float64)
 rho_u = np.zeros(dims, dtype=np.float64)
 rho_v = np.zeros(dims, dtype=np.float64)
 egy = np.zeros(dims, dtype=np.float64)
-rho_y1 = np.zeros(dims, dtype=np.float64)
-rho_y2 = np.zeros(dims, dtype=np.float64)
-rho_y3 = np.zeros(dims, dtype=np.float64)
+rho_y = np.zeros((3,)+dims, dtype=np.float64)
 tmp = np.zeros(dims, dtype=np.float64)
 prs = np.zeros(dims, dtype=np.float64)
 
@@ -179,9 +177,7 @@ fields['rho'] = rho
 fields['rho_u'] = rho_u
 fields['rho_v'] = rho_v
 fields['egy'] = egy
-fields['rho_y1'] = rho_y1
-fields['rho_y2'] = rho_y2
-fields['rho_y3'] = rho_y3
+fields['rho_y'] = rho_y
 fields['tmp'] = tmp
 fields['prs'] = prs
 
@@ -217,9 +213,9 @@ rho_v += rho*v_pert
 
 egy[:, :] = 0.5*(rho_u**2 + rho_v**2)/rho + rho*mixture.Cv(prs, tmp)*tmp
 
-rho_y1[...] = rho * y1
-rho_y2[...] = rho * y2
-rho_y3[...] = rho * y3
+rho_y[0][...] = rho * y1
+rho_y[1][...] = rho * y2
+rho_y[2][...] = rho * y3
 
 # reaction parameters
 Da = 10.
@@ -269,6 +265,4 @@ for i in range(timesteps):
         outfile.create_dataset("{}/rho_u".format(i), data=rho_u)
         outfile.create_dataset("{}/rho_v".format(i), data=rho_v)
         outfile.create_dataset("{}/tmp".format(i), data=tmp)
-        outfile.create_dataset("{}/rho_y1".format(i), data=rho_y1)
-        outfile.create_dataset("{}/rho_y2".format(i), data=rho_y2)
-        outfile.create_dataset("{}/rho_y3".format(i), data=rho_y3)
+        outfile.create_dataset("{}/rho_y".format(i), data=rho_y)

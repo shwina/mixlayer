@@ -34,9 +34,7 @@ class OneStepSolver:
                   fields['rho_u'],
                   fields['rho_v'],
                   fields['egy'],
-                  fields['rho_y1'],
-                  fields['rho_y2'],
-                  fields['rho_y3']]
+                  fields['rho_y']]
         self.tmp = fields['tmp']
         self.prs = fields['prs']
 
@@ -51,8 +49,8 @@ class OneStepSolver:
 
         dfdx, dfdy = self.operators.dfdx, self.operators.dfdy
         divergence, laplacian = self.operators.divergence, self.operators.laplacian
-        rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
-        rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y1_rhs, rho_y2_rhs, rho_y3_rhs = self.rhs
+        rho, rho_u, rho_v, egy, rho_y = self.U
+        rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y_rhs = self.rhs
         tmp, prs = self.tmp, self.prs
         molwt_1 = self.mixture.species_list[0].molecular_weight
         molwt_2 = self.mixture.species_list[1].molecular_weight
@@ -84,50 +82,50 @@ class OneStepSolver:
                         + dfdy(rho_u/rho * tau_12) + dfdy(rho_v/rho * tau_22)
                         + kappa*(laplacian(tmp))
                         - enthalpy_of_formation*(1+rratio)*reaction_rate*(
-                            rho_y1*rho_y2/(molwt_1*molwt_2)))
+                            rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))
 
         # species equation convection and diffusion terms:
         for i, (yi, rho_yi_rhs) in enumerate(zip(self.mixture.Y, self.rhs[4:])):
             D = self.mixture.D(i, tmp, prs)
-            rho_yi_rhs[...] = (
+            rho_y_rhs[i, ...] = (
                 - divergence(rho_u*yi, rho_v*yi)
                 - rho*D*divergence(
                     yi,
                     yi))
 
         # species equation source terms:
-        rho_y1_rhs[...] -= molwt_1 * reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
-        rho_y2_rhs[...] -= molwt_2 * rratio*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
-        rho_y3_rhs[...] += molwt_3 * (1+rratio)*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2))
+        rho_y_rhs[0, ...] -= molwt_1 * reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2))
+        rho_y_rhs[1, ...] -= molwt_2 * rratio*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2))
+        rho_y_rhs[2, ...] += molwt_3 * (1+rratio)*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2))
 
         self.non_reflecting_boundary_conditions()
 
     def correct(self):
         U = self.U
         mixture = self.mixture
-        rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
+        rho, rho_u, rho_v, egy, rho_y = self.U
         tmp = self.tmp
         prs = self.prs
         
-        y1 = U[4]/U[0]
-        y2 = U[5]/U[0]
-        y3 = U[6]/U[0]
+        y1 = rho_y[0]/rho
+        y2 = rho_y[1]/rho
+        y3 = rho_y[2]/rho
         tmp[...] = (egy - 0.5*(rho_u**2 + rho_v**2)/rho) / (rho*mixture.Cv(prs, tmp))
         prs[...] = mixture.gas_model.P(rho, tmp)
 
         xy = 1 - y1 - y2 - y3
-        U[4][ y1 > 0.5 ] += (rho*xy) [ y1 > 0.5 ]
-        U[5][ y1 < 0.5 ] += (rho*xy) [ y1 < 0.5 ]
+        rho_y[0][ y1 > 0.5 ] += (rho*xy) [ y1 > 0.5 ]
+        rho_y[1][ y1 < 0.5 ] += (rho*xy) [ y1 < 0.5 ]
 
         # ensure that mass fractions are 0 <= y <= 1
-        for rho_yi in U[4:]:
+        for rho_yi in rho_y:
             rho_yi [rho_yi < 0] = 0.
             rho_yi [rho_yi > rho] = rho [rho_yi > rho]
 
-        mixture.Y = [rho_y1/rho, rho_y2/rho, rho_y3/rho]
+        mixture.Y = [rho_y[0]/rho, rho_y[1]/rho, rho_y[2]/rho]
 
     def timestep(self):
-        rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
+        rho, rho_u, rho_v, egy, rho_y = self.U
         cfl_vel = 0.5
         cfl_visc = 0.1
         dxmin = np.minimum(self.grid.dx, self.grid.dy)
@@ -151,8 +149,8 @@ class OneStepSolver:
         divergence, laplacian = self.operators.divergence, self.operators.laplacian
         Ly = self.grid.Ly
         mixture = self.mixture
-        rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
-        rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y1_rhs, rho_y2_rhs, rho_y3_rhs = self.rhs
+        rho, rho_u, rho_v, egy, rho_y = self.U
+        rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y_rhs = self.rhs
         tmp = self.tmp
         prs = self.prs
         molwt_1 = self.mixture.species_list[0].molecular_weight
@@ -177,9 +175,9 @@ class OneStepSolver:
         drhody = dfdy(rho)
         dudy = dfdy(rho_u/rho)
         dvdy = dfdy(rho_v/rho)
-        dy1dy = dfdy(rho_y1/rho)
-        dy2dy = dfdy(rho_y2/rho)
-        dy3dy = dfdy(rho_y3/rho)
+        dy1dy = dfdy(rho_y[0]/rho)
+        dy2dy = dfdy(rho_y[1]/rho)
+        dy3dy = dfdy(rho_y[2]/rho)
         
         L_1 = (rho_v/rho - C_sound) * (dpdy - rho*C_sound*dvdy)
         L_2 = rho_v/rho * (C_sound**2 * drhody - dpdy)
@@ -220,23 +218,23 @@ class OneStepSolver:
                     dfdy(rho_u/rho * tau_12) + dfdy(rho_v/rho * tau_22) + 
                     kappa*(laplacian(tmp)))[0, :]
             - (enthalpy_of_formation*(1+rratio)*reaction_rate*(
-                rho_y1*rho_y2/(molwt_1*molwt_2)))[0, :]
+                rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[0, :]
         )
 
-        for i, (rho_yi, rho_yi_rhs) in enumerate(zip(self.U[4:], self.rhs[4:])):
+        for i, (rho_yi, rho_yi_rhs) in enumerate(zip(rho_y, rho_y_rhs)):
             D = self.mixture.D(i, tmp, prs)
             rho_yi_rhs[0, :] = (
                 - dfdx(rho_u*rho_yi/rho)
                 - rho*D*dfdx(rho_yi/rho))[0, :]
 
         # species equation source terms:
-        rho_y1_rhs[0, :] -= molwt_1 * (reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[0, :]
-        rho_y2_rhs[0, :] -= molwt_2 * (rratio*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[0, :]
-        rho_y3_rhs[0, :] += molwt_3 * ((1+rratio)*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[0, :]
+        rho_y_rhs[0][0, :] -= molwt_1 * (reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[0, :]
+        rho_y_rhs[1][0, :] -= molwt_2 * (rratio*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[0, :]
+        rho_y_rhs[2][0, :] += molwt_3 * ((1+rratio)*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[0, :]
 
-        rho_y1_rhs[0, :] = (rho_y1_rhs - rho_y1/rho*d_1 - rho*d_5)[0, :]
-        rho_y2_rhs[0, :] = (rho_y2_rhs - rho_y2/rho*d_1 - rho*d_6)[0, :]
-        rho_y3_rhs[0, :] = (rho_y3_rhs - rho_y3/rho*d_1 - rho*d_7)[0, :]
+        rho_y_rhs[0][0, :] = (rho_y_rhs[0] - rho_y[0]/rho*d_1 - rho*d_5)[0, :]
+        rho_y_rhs[1][0, :] = (rho_y_rhs[1] - rho_y[1]/rho*d_1 - rho*d_6)[0, :]
+        rho_y_rhs[2][0, :] = (rho_y_rhs[2] - rho_y[2]/rho*d_1 - rho*d_7)[0, :]
 
         L_1 = 0.4 * (1 - self.Ma**2) * C_sound/Ly * (prs - self.P_inf)
         L_2 = rho_v/rho * (C_sound**2 * drhody - dpdy)
@@ -274,29 +272,29 @@ class OneStepSolver:
                     dfdy(rho_u/rho * tau_12) + dfdy(rho_v/rho * tau_22) + 
                     kappa*(laplacian(tmp)))[-1, :]
             - (enthalpy_of_formation*(1+rratio)*reaction_rate*(
-                rho_y1*rho_y2/(molwt_1*molwt_2)))[-1, :]
+                rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[-1, :]
         )
 
-        for i, (rho_yi, rho_yi_rhs) in enumerate(zip(self.U[4:], self.rhs[4:])):
+        for i, (rho_yi, rho_yi_rhs) in enumerate(zip(rho_y, rho_y_rhs)):
             D = self.mixture.D(i, tmp, prs)
             rho_yi_rhs[-1, :] = (
                 - dfdx(rho_u*rho_yi/rho)
                 - rho*D*dfdx(rho_yi/rho))[-1, :]
 
         # species equation source terms:
-        rho_y1_rhs[-1, :] -= molwt_1 * (reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[-1, :]
-        rho_y2_rhs[-1, :] -= molwt_2 * (rratio*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[-1, :]
-        rho_y3_rhs[-1, :] += molwt_3 * ((1+rratio)*reaction_rate*(rho_y1*rho_y2/(molwt_1*molwt_2)))[-1, :]
+        rho_y_rhs[0][-1, :] -= molwt_1 * (reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[-1, :]
+        rho_y_rhs[1][-1, :] -= molwt_2 * (rratio*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[-1, :]
+        rho_y_rhs[2][-1, :] += molwt_3 * ((1+rratio)*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[-1, :]
 
 
-        rho_y1_rhs[-1, :] = (rho_y1_rhs - rho_y1/rho*d_1 - rho*d_5)[-1, :]
-        rho_y2_rhs[-1, :] = (rho_y2_rhs - rho_y2/rho*d_1 - rho*d_6)[-1, :]
-        rho_y3_rhs[-1, :] = (rho_y3_rhs - rho_y3/rho*d_1 - rho*d_7)[-1, :]
+        rho_y_rhs[0][-1, :] = (rho_y_rhs[0] - rho_y[0]/rho*d_1 - rho*d_5)[-1, :]
+        rho_y_rhs[1][-1, :] = (rho_y_rhs[1] - rho_y[1]/rho*d_1 - rho*d_6)[-1, :]
+        rho_y_rhs[2][-1, :] = (rho_y_rhs[2] - rho_y[2]/rho*d_1 - rho*d_7)[-1, :]
         
     def stress_tensor(self):
         dfdx, dfdy = self.operators.dfdx, self.operators.dfdy
         mixture = self.mixture
-        rho, rho_u, rho_v, egy, rho_y1, rho_y2, rho_y3 = self.U
+        rho, rho_u, rho_v, egy, rho_y = self.U
         tmp = self.tmp
         prs = self.prs
         mu = self.mixture.mu(prs, tmp)
@@ -313,6 +311,15 @@ class OneStepSolver:
 
         return tau_11, tau_12, tau_22
 
+    def filter(self):
+        # all other equations:
+        for f in self.U[:-1]:
+            filter5(f)
+
+        # species equations:
+        for f in self.U[-1]:
+            filter5(f)
+
     def step(self):
         dt = self.timestep()
         self.stepper.step(dt)
@@ -320,10 +327,9 @@ class OneStepSolver:
         rho = self.U[0]
 
         # apply filter
-        for f in self.U:
-            filter5(f)
+        self.filter()
 
         # ensure that mass fractions are 0 <= y <= 1
-        for rho_yi in self.U[4:]:
+        for rho_yi in self.U[-1]:
             rho_yi [rho_yi < 0] = 0.
             rho_yi [rho_yi > rho] = rho [rho_yi > rho]
