@@ -228,13 +228,13 @@ class OneStepSolver:
                 - rho*D*dfdx(rho_yi/rho))[0, :]
 
         # species equation source terms:
-        rho_y_rhs[0][0, :] -= molwt_1 * (reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[0, :]
-        rho_y_rhs[1][0, :] -= molwt_2 * (rratio*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[0, :]
-        rho_y_rhs[2][0, :] += molwt_3 * ((1+rratio)*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[0, :]
+        rho_y_rhs[0, 0, :] -= molwt_1 * (reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[0, :]
+        rho_y_rhs[1, 0, :] -= molwt_2 * (rratio*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[0, :]
+        rho_y_rhs[2, 0, :] += molwt_3 * ((1+rratio)*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[0, :]
 
-        rho_y_rhs[0][0, :] = (rho_y_rhs[0] - rho_y[0]/rho*d_1 - rho*d_5)[0, :]
-        rho_y_rhs[1][0, :] = (rho_y_rhs[1] - rho_y[1]/rho*d_1 - rho*d_6)[0, :]
-        rho_y_rhs[2][0, :] = (rho_y_rhs[2] - rho_y[2]/rho*d_1 - rho*d_7)[0, :]
+        rho_y_rhs[0, 0, :] = (rho_y_rhs[0] - rho_y[0]/rho*d_1 - rho*d_5)[0, :]
+        rho_y_rhs[1, 0, :] = (rho_y_rhs[1] - rho_y[1]/rho*d_1 - rho*d_6)[0, :]
+        rho_y_rhs[2, 0, :] = (rho_y_rhs[2] - rho_y[2]/rho*d_1 - rho*d_7)[0, :]
 
         L_1 = 0.4 * (1 - self.Ma**2) * C_sound/Ly * (prs - self.P_inf)
         L_2 = rho_v/rho * (C_sound**2 * drhody - dpdy)
@@ -282,14 +282,13 @@ class OneStepSolver:
                 - rho*D*dfdx(rho_yi/rho))[-1, :]
 
         # species equation source terms:
-        rho_y_rhs[0][-1, :] -= molwt_1 * (reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[-1, :]
-        rho_y_rhs[1][-1, :] -= molwt_2 * (rratio*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[-1, :]
-        rho_y_rhs[2][-1, :] += molwt_3 * ((1+rratio)*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[-1, :]
+        rho_y_rhs[0, -1, :] -= molwt_1 * (reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[-1, :]
+        rho_y_rhs[1, -1, :] -= molwt_2 * (rratio*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[-1, :]
+        rho_y_rhs[2, -1, :] += molwt_3 * ((1+rratio)*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))[-1, :]
 
-
-        rho_y_rhs[0][-1, :] = (rho_y_rhs[0] - rho_y[0]/rho*d_1 - rho*d_5)[-1, :]
-        rho_y_rhs[1][-1, :] = (rho_y_rhs[1] - rho_y[1]/rho*d_1 - rho*d_6)[-1, :]
-        rho_y_rhs[2][-1, :] = (rho_y_rhs[2] - rho_y[2]/rho*d_1 - rho*d_7)[-1, :]
+        rho_y_rhs[0, -1, :] = (rho_y_rhs[0] - rho_y[0]/rho*d_1 - rho*d_5)[-1, :]
+        rho_y_rhs[1, -1, :] = (rho_y_rhs[1] - rho_y[1]/rho*d_1 - rho*d_6)[-1, :]
+        rho_y_rhs[2, -1, :] = (rho_y_rhs[2] - rho_y[2]/rho*d_1 - rho*d_7)[-1, :]
         
     def stress_tensor(self):
         dfdx, dfdy = self.operators.dfdx, self.operators.dfdy
