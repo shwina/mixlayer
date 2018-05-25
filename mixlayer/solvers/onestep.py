@@ -52,21 +52,19 @@ class OneStepSolver:
         rho, rho_u, rho_v, egy, rho_y = self.U
         rho_rhs, rho_u_rhs, rho_v_rhs, egy_rhs, rho_y_rhs = self.rhs
         tmp, prs = self.tmp, self.prs
-        molwt_1 = self.mixture.species_list[0].molecular_weight
-        molwt_2 = self.mixture.species_list[1].molecular_weight
-        molwt_3 = self.mixture.species_list[2].molecular_weight
-
+        
         mu = self.mixture.mu(prs, tmp)
         kappa = self.mixture.kappa(prs, tmp)
 
-        activation_energy = self.reaction.activation_energy
-        arrhenius_coefficient = self.reaction.arrhenius_coefficient
-        rratio = self.rratio
+        mweights = [self.mixture.species_list[i].molecular_weight for i in range(3)]
+        stoic_coeffs = (1, self.rratio, (1+self.rratio))
+    
         enthalpy_of_formation = self.mixture.species_list[2].enthalpy_of_formation
-        reaction_rate = arrhenius_coefficient * rho * np.exp(
-                -activation_energy/(universal_gas_constant*tmp))
+        reaction_rate = self.reaction.arrhenius_coefficient * rho * np.exp(
+                -self.reaction.activation_energy/(universal_gas_constant*tmp))
 
-        # euler and viscous terms:
+        rrates = (reaction_rate, reaction_rate, -reaction_rate)
+
         tau_11, tau_12, tau_22 = self.stress_tensor()
 
         rho_rhs[...] = -divergence(rho_u, rho_v)
@@ -81,8 +79,8 @@ class OneStepSolver:
                         + dfdx(rho_u/rho * tau_11) + dfdx(rho_v/rho * tau_12)
                         + dfdy(rho_u/rho * tau_12) + dfdy(rho_v/rho * tau_22)
                         + kappa*(laplacian(tmp))
-                        - enthalpy_of_formation*(1+rratio)*reaction_rate*(
-                            rho_y[0]*rho_y[1]/(molwt_1*molwt_2)))
+                        - enthalpy_of_formation*(1+self.rratio)*reaction_rate*(
+                            rho_y[0]*rho_y[1]/(mweights[0]*mweights[1])))
 
         # species equation convection and diffusion terms:
         for i, (yi, rho_yi_rhs) in enumerate(zip(self.mixture.Y, rho_y_rhs)):
@@ -91,12 +89,9 @@ class OneStepSolver:
                 - divergence(rho_u*yi, rho_v*yi)
                 - rho*D*divergence(
                     yi,
-                    yi))
-
-        # species equation source terms:
-        rho_y_rhs[0, ...] -= molwt_1 * reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2))
-        rho_y_rhs[1, ...] -= molwt_2 * rratio*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2))
-        rho_y_rhs[2, ...] += molwt_3 * (1+rratio)*reaction_rate*(rho_y[0]*rho_y[1]/(molwt_1*molwt_2))
+                    yi)
+                - rrates[i] * mweights[i] * (rho_y[0]*rho_y[1]/
+                                            (mweights[0]*mweights[1])))
 
         self.non_reflecting_boundary_conditions()
 
