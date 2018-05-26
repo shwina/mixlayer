@@ -50,6 +50,8 @@ class SinhGrid(object):
         self.dn = dn
         self.Lx = Lx
         self.Ly = Ly
+        self.nx = nx
+        self.ny = ny
         self.dndy = dndy
         self.d2ndy2 = d2ndy2
         self.shape = [ny, nx]
